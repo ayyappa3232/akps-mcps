@@ -8,6 +8,7 @@ import { registerReadFileTool } from "./readFile.js";
 import { registerTraceDependenciesTool } from "./traceDependencies.js";
 import { registerGenerateDependencyDiagramTool } from "./generateDependencyDiagram.js";
 import { registerExplainMethodTool } from "./explainMethod.js";
+import { registerAnalyzeChangeImpactTool } from "./analyzeChangeImpact.js";
 
 export function registerAllTools(server: McpServer): void {
   registerHelloDeveloperTool(server);
@@ -18,4 +19,5 @@ export function registerAllTools(server: McpServer): void {
   registerTraceDependenciesTool(server);
   registerGenerateDependencyDiagramTool(server);
   registerExplainMethodTool(server);
+  registerAnalyzeChangeImpactTool(server);
 }

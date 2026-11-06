@@ -5,6 +5,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import { generateDependencyTrace } from "./tools/traceDependencies.js";
 import { explainMethod } from "./tools/explainMethod.js";
+import { analyzeChangeImpact } from "./tools/analyzeChangeImpact.js";
 
 const app = express();
 const PORT = 4174;
@@ -225,6 +226,97 @@ app.post("/api/explain-method", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to explain method.",
+    });
+  }
+});
+
+app.post("/api/analyze-change-impact", async (req, res) => {
+  try {
+    const {
+      projectPath,
+      filePath,
+      symbol,
+      caseSensitive = true,
+    } = req.body ?? {};
+
+    if (typeof projectPath !== "string" || projectPath.trim() === "") {
+      res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+      return;
+    }
+
+    if (filePath !== undefined && typeof filePath !== "string") {
+      res.status(400).json({
+        success: false,
+        error: "filePath must be a string when provided.",
+      });
+      return;
+    }
+
+    if (symbol !== undefined && typeof symbol !== "string") {
+      res.status(400).json({
+        success: false,
+        error: "symbol must be a string when provided.",
+      });
+      return;
+    }
+
+    if (filePath === undefined && symbol === undefined) {
+      res.status(400).json({
+        success: false,
+        error: "At least one of filePath or symbol must be supplied.",
+      });
+      return;
+    }
+
+    if (!isAbsolute(projectPath)) {
+      res.status(400).json({
+        success: false,
+        error: "projectPath must be an absolute path.",
+      });
+      return;
+    }
+
+    if (
+      filePath !== undefined &&
+      (
+        path.isAbsolute(filePath) ||
+        filePath.split(/[\\/]/).includes("..")
+      )
+    ) {
+      res.status(400).json({
+        success: false,
+        error: "filePath must be relative to projectPath.",
+      });
+      return;
+    }
+
+    if (typeof caseSensitive !== "boolean") {
+      res.status(400).json({
+        success: false,
+        error: "caseSensitive must be a boolean.",
+      });
+      return;
+    }
+
+    const result = await analyzeChangeImpact(
+      projectPath,
+      filePath,
+      symbol,
+      caseSensitive,
+    );
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      tool: "analyze_change_impact",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze change impact.",
     });
   }
 });

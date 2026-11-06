@@ -226,78 +226,158 @@ function buildFlow(
 ) {
   const nodes: MethodNodeType[] = [];
   const edges: Edge[] = [];
-  const ys = new Map<string, number>();
 
-  const xFor = (depth: number) =>
-    depth === 0 ? 0 : ROOT_WIDTH + 90 + (depth - 1) * (NODE_WIDTH + 80);
+  /*
+   * Layered layout:
+   *   - depth controls the horizontal direction
+   *   - large sibling groups are wrapped into multiple columns
+   *   - every layer has a bounded number of rows
+   *
+   * This prevents a method with 20+ calls from becoming one extremely
+   * tall column after Fit. The visual result is much closer to the
+   * Change Impact Explorer: root -> direct calls -> deeper calls.
+   */
+  const ROWS_PER_COLUMN = 8;
+  const NODE_X_GAP = 72;
+  const NODE_Y_GAP = 30;
+  const LEVEL_GAP = 92;
 
-  const visit = (
+  type VisibleNode = {
+    id: string;
+    item: CallItem;
+    depth: number;
+    order: number;
+    parentId: string;
+  };
+
+  const visible: VisibleNode[] = [];
+
+  const collect = (
     list: CallItem[],
     parentId: string,
-    depth: number,
-    cursor: number
-  ): number => {
-    let used = 0;
-
+    depth: number
+  ) => {
     list.forEach((item, index) => {
       const id = `${parentId}/${index}`;
-      const kids = expanded.has(id) ? item.children : [];
-      let slots = 1;
-      let y = (cursor + used) * NODE_SLOT;
 
-      if (kids.length) {
-        slots = visit(kids, id, depth + 1, cursor + used);
-        y = ((ys.get(`${id}/0`) ?? y) + (ys.get(`${id}/${kids.length - 1}`) ?? y)) / 2;
+      visible.push({
+        id,
+        item,
+        depth,
+        order: visible.length,
+        parentId
+      });
+
+      if (expanded.has(id) && item.children.length) {
+        collect(item.children, id, depth + 1);
       }
+    });
+  };
 
-      ys.set(id, y);
+  if (expanded.has(ROOT_ID)) {
+    collect(items, ROOT_ID, 1);
+  }
+
+  const byDepth = new Map<number, VisibleNode[]>();
+
+  for (const item of visible) {
+    const list = byDepth.get(item.depth) ?? [];
+    list.push(item);
+    byDepth.set(item.depth, list);
+  }
+
+  const columnCount = new Map<number, number>();
+
+  for (const [depth, list] of byDepth) {
+    columnCount.set(
+      depth,
+      Math.max(1, Math.ceil(list.length / ROWS_PER_COLUMN))
+    );
+  }
+
+  const maxDepth = byDepth.size
+    ? Math.max(...byDepth.keys())
+    : 1;
+
+  const depthStartX = new Map<number, number>();
+  let nextX = ROOT_WIDTH + LEVEL_GAP;
+
+  for (let depth = 1; depth <= maxDepth; depth += 1) {
+    depthStartX.set(depth, nextX);
+
+    const columns = columnCount.get(depth) ?? 1;
+
+    nextX +=
+      columns * NODE_WIDTH +
+      Math.max(0, columns - 1) * NODE_X_GAP +
+      LEVEL_GAP;
+  }
+
+  const yForIndex = (index: number) => {
+    const row = index % ROWS_PER_COLUMN;
+    return row * (NODE_SLOT + NODE_Y_GAP);
+  };
+
+  for (const [depth, list] of byDepth) {
+    list.forEach((entry, index) => {
+      const column = Math.floor(index / ROWS_PER_COLUMN);
 
       nodes.push({
-        id,
+        id: entry.id,
         type: "mx",
-        position: { x: xFor(depth), y },
+        position: {
+          x:
+            (depthStartX.get(depth) ?? nextX) +
+            column * (NODE_WIDTH + NODE_X_GAP),
+          y: yForIndex(index)
+        },
         draggable: false,
         selectable: false,
         data: {
-          id,
-          name: item.name,
-          variant: item.variant,
-          awaited: item.awaited,
-          count: item.count,
-          expandable: item.children.length > 0,
-          expanded: expanded.has(id),
-          selected: selectedId === id,
+          id: entry.id,
+          name: entry.item.name,
+          variant: entry.item.variant,
+          awaited: entry.item.awaited,
+          count: entry.item.count,
+          expandable: entry.item.children.length > 0,
+          expanded: expanded.has(entry.id),
+          selected: selectedId === entry.id,
           isRoot: false,
           onToggle
         }
       });
 
-      const isRecursive = item.variant === "recursive";
+      const isRecursive = entry.item.variant === "recursive";
+
       edges.push({
-        id: `e-${parentId}-${id}`,
-        source: parentId,
-        target: id,
+        id: `e-${entry.parentId}-${entry.id}`,
+        source: entry.parentId,
+        target: entry.id,
         type: "smoothstep",
-        markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "#8fa0b8" },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 16,
+          height: 16,
+          color: isRecursive ? "#fb923c" : "#8fa0b8"
+        },
         style: {
-          stroke: "#8fa0b8",
-          strokeWidth: 1.5,
+          stroke: isRecursive ? "#fb923c" : "#8fa0b8",
+          strokeWidth: isRecursive ? 1.8 : 1.5,
           strokeDasharray: isRecursive ? "6 4" : undefined
         }
       });
-
-      used += slots;
     });
+  }
 
-    return Math.max(used, 1);
-  };
+  const rowsVisible = Math.min(
+    ROWS_PER_COLUMN,
+    Math.max(1, visible.length)
+  );
 
-  const topLevel = expanded.has(ROOT_ID) ? items : [];
-  if (topLevel.length) visit(topLevel, ROOT_ID, 1, 0);
-
-  const rootY = topLevel.length
-    ? ((ys.get(`${ROOT_ID}/0`) ?? 0) + (ys.get(`${ROOT_ID}/${topLevel.length - 1}`) ?? 0)) / 2
-    : 0;
+  const rootY =
+    visible.length > 0
+      ? ((rowsVisible - 1) * (NODE_SLOT + NODE_Y_GAP)) / 2
+      : 0;
 
   nodes.push({
     id: ROOT_ID,
@@ -576,13 +656,26 @@ function MethodExplorerInner({
     [method, items, expanded, selectedId, toggle]
   );
 
+  const fitMethodGraph = useCallback(() => {
+    if (!method || mode !== "graph") return;
+
+    window.setTimeout(() => {
+      const visibleNodeCount = flow.getNodes().length;
+      const padding = visibleNodeCount > 12 ? 0.12 : 0.2;
+
+      flow.fitView({
+        padding,
+        duration: 300,
+        minZoom: visibleNodeCount > 20 ? 0.28 : 0.35,
+        maxZoom: visibleNodeCount > 20 ? 0.95 : 1.15
+      });
+    }, 40);
+  }, [flow, method, mode]);
+
   useEffect(() => {
     if (!method || mode !== "graph") return;
-    const timer = window.setTimeout(() => {
-      flow.fitView({ padding: 0.2, duration: 250, maxZoom: 1 });
-    }, 60);
-    return () => window.clearTimeout(timer);
-  }, [method, expanded, mode, flow]);
+    fitMethodGraph();
+  }, [method, expanded, mode, fitMethodGraph]);
 
   const selectedItem = selectedId === ROOT_ID ? null : findItem(items, selectedId);
 
@@ -703,7 +796,7 @@ function MethodExplorerInner({
 
             {mode === "graph" && (
               <div className="mx-zoom">
-                <button type="button" className="with-label" onClick={() => flow.fitView({ padding: 0.2, duration: 250, maxZoom: 1 })}>
+                <button type="button" className="with-label" onClick={fitMethodGraph}>
                   <Focus size={15} /> Fit
                 </button>
                 <button type="button" aria-label="Zoom out" onClick={() => flow.zoomOut({ duration: 150 })}>

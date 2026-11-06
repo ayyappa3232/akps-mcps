@@ -1785,3 +1785,6 @@ body,
   background: rgba(120, 80, 10, 0.2);
   color: #fde68a;
 }
+
+/* Change Impact tab icon */
+.view-tabs .impact-tab-icon { display:inline-grid; width:16px; height:16px; place-items:center; font-size:14px; font-weight:800; color:currentColor; }

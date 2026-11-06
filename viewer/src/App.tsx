@@ -15,6 +15,7 @@ import "@xyflow/react/dist/style.css";
 import { List, Network } from "lucide-react";
 import "./styles.css";
 import MethodExplorer from "./modules/methodExplorer/MethodExplorer";
+import AnalyzeChangeImpact from "./modules/changeImpact/AnalyzeChangeImpact";
 
 const defaultProjectPath =
   "/Users/ayyappakumar/Desktop/Ayyappa/Projects/React/My_Projects/PORTFOLIO_PROJECTS/learning-coding-hub";
@@ -320,7 +321,7 @@ export default function App() {
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [activeView, setActiveView] = useState<"tree" | "graph" | "method">("tree");
+  const [activeView, setActiveView] = useState<"tree" | "graph" | "method" | "impact">("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [expandedGraphNodes, setExpandedGraphNodes] = useState<Set<string>>(new Set());
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
@@ -717,6 +718,14 @@ export default function App() {
           >
             <span className="mx-fglyph">ƒ</span> Method Explorer
           </button>
+
+          <button
+            type="button"
+            className={activeView === "impact" ? "active" : ""}
+            onClick={() => setActiveView("impact")}
+          >
+            <span className="impact-tab-icon">↯</span> Change Impact
+          </button>
         </div>
 
         <div className="graph-heading">
@@ -726,7 +735,9 @@ export default function App() {
                 ? "Dependency tree"
                 : activeView === "graph"
                   ? "Dependency graph"
-                  : "Method Explorer"}
+                  : activeView === "method"
+                    ? "Method Explorer"
+                    : "Change Impact Analyzer"}
             </h2>
 
             <p>
@@ -734,7 +745,9 @@ export default function App() {
                 ? "Expand a folder or file to explore its dependencies."
                 : activeView === "graph"
                   ? "Click a node to reveal or hide its direct dependencies. Full paths are available on hover."
-                  : "Inspect a function, component, or method as an interactive call tree and graph."}
+                  : activeView === "method"
+                    ? "Inspect a function, component, or method as an interactive call tree and graph."
+                    : "Analyze direct consumers, downstream impact, risk, and affected symbols before changing code."}
             </p>
           </div>
 
@@ -935,6 +948,16 @@ export default function App() {
             // apiUrl="http://127.0.0.1:4174/api/explain-method"
             // defaultSymbol="generateGraph"
             // defaultFilePath="viewer/src/App.tsx"
+          />
+        )}
+
+        {activeView === "impact" && (
+          <AnalyzeChangeImpact
+            projectPath={projectPath}
+            // optional overrides:
+            // apiUrl="http://127.0.0.1:4174/api/analyze-change-impact"
+            // defaultFilePath="viewer/src/App.tsx"
+            // defaultSymbol="generateGraph"
           />
         )}
 
