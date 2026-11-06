@@ -494,6 +494,16 @@ export default function AnalyzeChangeImpact({
               <div className="aci-inspector-body">
                 {selectedImpact ? (
                   <div className="aci-selected-impact">
+                    <button
+                      type="button"
+                      className="aci-back-references"
+                      onClick={() => {
+                        setSelectedImpact(null);
+                        setTab("references");
+                      }}
+                    >
+                      ← Back to References
+                    </button>
                     <div className="aci-selected-heading">
                       <FileCode2 size={20} />
                       <div><strong>{shortPath(selectedImpact.filePath)}</strong><span>{selectedImpact.impact} impact · score {selectedImpact.score}</span></div>
