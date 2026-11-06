@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
@@ -13,7 +12,9 @@ import {
   type Edge
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { List, Network } from "lucide-react";
 import "./styles.css";
+import MethodExplorer from "./modules/methodExplorer/MethodExplorer";
 
 const defaultProjectPath =
   "/Users/ayyappakumar/Desktop/Ayyappa/Projects/React/My_Projects/PORTFOLIO_PROJECTS/learning-coding-hub";
@@ -73,7 +74,7 @@ function countDependencies(node: DependencyNode): number {
 }
 
 function getShortLabel(filePath: string): string {
-  const parts = filePath.split(/[\\/]/).filter(Boolean);
+  const parts = filePath.split(/[\\\\/]/).filter(Boolean);
   if (parts.length <= 2) return filePath;
   return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
 }
@@ -97,12 +98,13 @@ function createProgressiveFlowLayout(
     incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
   });
 
-  const root = graph.nodes.find(
-    (node) =>
-      node.filePath === entryFile ||
-      node.filePath.endsWith(`/${entryFile}`) ||
-      node.label === entryFile
-  ) ?? graph.nodes[0];
+  const root =
+    graph.nodes.find(
+      (node) =>
+        node.filePath === entryFile ||
+        node.filePath.endsWith(`/${entryFile}`) ||
+        node.label === entryFile
+    ) ?? graph.nodes[0];
 
   if (!root) return { nodes: [] as Node[], edges: [] as Edge[] };
 
@@ -148,21 +150,23 @@ function createProgressiveFlowLayout(
       sourcePosition: Position.Right,
       targetPosition: Position.Left,
       data: {
-        label: `${shortLabel}${isShared ? '  ·  SHARED' : ''}${hasChildren ? (isExpanded ? '  ·  COLLAPSE' : '  ·  + EXPAND') : ''}`
+        label: `${shortLabel}${isShared ? "  ·  SHARED" : ""}${
+          hasChildren ? (isExpanded ? "  ·  COLLAPSE" : "  ·  + EXPAND") : ""
+        }`
       },
       style: {
         width: 300,
         minHeight: 58,
-        padding: '12px 14px',
+        padding: "12px 14px",
         borderRadius: 12,
-        border: isShared ? '2px solid #3b82f6' : '1px solid #64748b',
-        background: isShared ? '#172f50' : '#1e293b',
-        color: '#e5e7eb',
+        border: isShared ? "2px solid #3b82f6" : "1px solid #64748b",
+        background: isShared ? "#172f50" : "#1e293b",
+        color: "#e5e7eb",
         fontSize: 13,
         fontWeight: 600,
         lineHeight: 1.5,
-        whiteSpace: 'normal',
-        overflowWrap: 'anywhere'
+        whiteSpace: "normal",
+        overflowWrap: "anywhere"
       }
     };
   });
@@ -175,20 +179,22 @@ function createProgressiveFlowLayout(
         id: `edge-${edge.from}-${edge.to}-${index}`,
         source: edge.from,
         target: edge.to,
-        type: 'smoothstep',
+        type: "smoothstep",
         animated: false,
-        markerEnd: { type: MarkerType.ArrowClosed, color: isBackEdge ? '#f87171' : '#94a3b8' },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: isBackEdge ? "#f87171" : "#94a3b8"
+        },
         style: {
-          stroke: isBackEdge ? '#ef4444' : '#94a3b8',
+          stroke: isBackEdge ? "#ef4444" : "#94a3b8",
           strokeWidth: isBackEdge ? 2 : 1.5,
-          strokeDasharray: isBackEdge ? '6 4' : undefined
+          strokeDasharray: isBackEdge ? "6 4" : undefined
         }
       };
     });
 
   return { nodes, edges: visibleEdges };
 }
-
 
 type ThemeSelectOption = {
   value: number;
@@ -314,7 +320,7 @@ export default function App() {
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [activeView, setActiveView] = useState<"tree" | "graph">("tree");
+  const [activeView, setActiveView] = useState<"tree" | "graph" | "method">("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [expandedGraphNodes, setExpandedGraphNodes] = useState<Set<string>>(new Set());
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
@@ -348,9 +354,7 @@ export default function App() {
       const result = (await response.json()) as DependencyResponse;
 
       if (!response.ok || !result.success) {
-        throw new Error(
-          result.error || `Request failed with status ${response.status}`
-        );
+        throw new Error(result.error || `Request failed with status ${response.status}`);
       }
 
       if (!result.dependencyTree) {
@@ -358,11 +362,15 @@ export default function App() {
       }
 
       setTree(result.dependencyTree);
+
       if (result.graph) {
         setGraphData(result.graph);
-        const root = result.graph.nodes.find(
-          (node) => node.filePath === result.entryFile || node.filePath.endsWith(`/${result.entryFile}`)
-        ) ?? result.graph.nodes[0];
+        const root =
+          result.graph.nodes.find(
+            (node) =>
+              node.filePath === result.entryFile ||
+              node.filePath.endsWith(`/${result.entryFile}`)
+          ) ?? result.graph.nodes[0];
         const initialExpanded = new Set<string>(root ? [root.id] : []);
         setExpandedGraphNodes(initialExpanded);
         setSelectedGraphNodeId(root?.id ?? null);
@@ -374,25 +382,19 @@ export default function App() {
         setFlowNodes(layout.nodes);
         setFlowEdges(layout.edges);
       }
+
       setWarnings(result.warnings ?? []);
 
       setStats({
         uniqueFileCount: result.uniqueFileCount ?? 0,
-        dependencyRelationshipCount:
-          result.dependencyRelationshipCount ?? 0,
+        dependencyRelationshipCount: result.dependencyRelationshipCount ?? 0,
         sharedDependencyCount: result.sharedDependencyCount ?? 0,
         circularDependencyCount: result.circularDependencyCount ?? 0
       });
 
-      setStatus(
-        `Loaded ${countDependencies(result.dependencyTree) + 1} tree entries`
-      );
+      setStatus(`Loaded ${countDependencies(result.dependencyTree) + 1} tree entries`);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to generate the dependency tree."
-      );
+      setError(err instanceof Error ? err.message : "Unable to generate the dependency tree.");
       setStatus("Generation failed");
     } finally {
       setLoading(false);
@@ -415,9 +417,10 @@ export default function App() {
 
   function resetGraphView() {
     if (!graphData) return;
-    const root = graphData.nodes.find(
-      (node) => node.filePath === entryFile || node.filePath.endsWith(`/${entryFile}`)
-    ) ?? graphData.nodes[0];
+    const root =
+      graphData.nodes.find(
+        (node) => node.filePath === entryFile || node.filePath.endsWith(`/${entryFile}`)
+      ) ?? graphData.nodes[0];
     const next = new Set<string>(root ? [root.id] : []);
     setExpandedGraphNodes(next);
     setSelectedGraphNodeId(root?.id ?? null);
@@ -429,27 +432,18 @@ export default function App() {
   function toggleNode(file: string) {
     setExpanded((previous) => {
       const next = new Set(previous);
-
-      if (next.has(file)) {
-        next.delete(file);
-      } else {
-        next.add(file);
-      }
-
+      if (next.has(file)) next.delete(file);
+      else next.add(file);
       return next;
     });
   }
 
   function expandAll() {
     if (!tree) return;
-
     const allExpandable = new Set<string>();
 
     function visit(node: DependencyNode) {
-      if (node.dependencies.length > 0) {
-        allExpandable.add(node.file);
-      }
-
+      if (node.dependencies.length > 0) allExpandable.add(node.file);
       node.dependencies.forEach(visit);
     }
 
@@ -507,16 +501,10 @@ export default function App() {
 
   const matchingFiles = useMemo(() => {
     const matches = new Set<string>();
-
-    if (!tree || !normalizedSearch) {
-      return matches;
-    }
+    if (!tree || !normalizedSearch) return matches;
 
     function visit(node: DependencyNode) {
-      if (node.file.toLowerCase().includes(normalizedSearch)) {
-        matches.add(node.file);
-      }
-
+      if (node.file.toLowerCase().includes(normalizedSearch)) matches.add(node.file);
       node.dependencies.forEach(visit);
     }
 
@@ -531,21 +519,17 @@ export default function App() {
   ): React.ReactNode {
     const hasChildren = node.dependencies.length > 0;
     const isExpanded = expanded.has(node.file);
-    const isMatch =
-      normalizedSearch.length > 0 && matchingFiles.has(node.file);
+    const isMatch = normalizedSearch.length > 0 && matchingFiles.has(node.file);
 
     const visibleDependencies = normalizedSearch
       ? node.dependencies.filter(
-        (dependency) =>
-          matchingFiles.has(dependency.file) ||
-          dependency.dependencies.some((child) =>
-            matchingFiles.has(child.file)
-          )
-      )
+          (dependency) =>
+            matchingFiles.has(dependency.file) ||
+            dependency.dependencies.some((child) => matchingFiles.has(child.file))
+        )
       : node.dependencies;
 
-    const showChildren =
-      normalizedSearch.length > 0 || isExpanded;
+    const showChildren = normalizedSearch.length > 0 || isExpanded;
 
     return (
       <div className="tree-branch" key={`${ancestors.join("/")}/${node.file}`}>
@@ -555,8 +539,7 @@ export default function App() {
         >
           <button
             type="button"
-            className={`tree-toggle ${hasChildren ? "" : "tree-toggle-empty"
-              }`}
+            className={`tree-toggle ${hasChildren ? "" : "tree-toggle-empty"}`}
             onClick={() => hasChildren && toggleNode(node.file)}
             disabled={!hasChildren}
             aria-label={
@@ -568,19 +551,13 @@ export default function App() {
             {hasChildren ? (isExpanded ? "▼" : "▶") : "•"}
           </button>
 
-          <span className="tree-file-icon">
-            {hasChildren ? "📁" : "📄"}
-          </span>
+          <span className="tree-file-icon">{hasChildren ? "📁" : "📄"}</span>
 
           <span className="tree-file-name" title={node.file}>
             {node.file}
           </span>
 
-          {hasChildren && (
-            <span className="tree-count">
-              {node.dependencies.length}
-            </span>
-          )}
+          {hasChildren && <span className="tree-count">{node.dependencies.length}</span>}
 
           {node.isShared && (
             <span
@@ -594,8 +571,7 @@ export default function App() {
           {node.isCircular && (
             <span
               className="dependency-badge circular-badge"
-              title={`Circular reference to ${node.referenceTo ?? node.file
-                }`}
+              title={`Circular reference to ${node.referenceTo ?? node.file}`}
             >
               CIRCULAR
             </span>
@@ -604,10 +580,7 @@ export default function App() {
 
         {showChildren &&
           visibleDependencies.map((dependency) =>
-            renderNode(dependency, level + 1, [
-              ...ancestors,
-              node.file
-            ])
+            renderNode(dependency, level + 1, [...ancestors, node.file])
           )}
       </div>
     );
@@ -672,11 +645,7 @@ export default function App() {
           }))}
         />
 
-        <button
-          type="button"
-          onClick={generateGraph}
-          disabled={loading}
-        >
+        <button type="button" onClick={generateGraph} disabled={loading}>
           {loading ? "Scanning..." : "Generate tree"}
         </button>
       </section>
@@ -729,7 +698,7 @@ export default function App() {
             className={activeView === "tree" ? "active" : ""}
             onClick={() => setActiveView("tree")}
           >
-            <span>☷</span> Tree View
+            <List size={15} /> Tree View
           </button>
 
           <button
@@ -738,41 +707,57 @@ export default function App() {
             onClick={() => setActiveView("graph")}
             disabled={!graphData}
           >
-            <span>⌘</span> Graph View
+            <Network size={15} /> Graph View
+          </button>
+
+          <button
+            type="button"
+            className={activeView === "method" ? "active" : ""}
+            onClick={() => setActiveView("method")}
+          >
+            <span className="mx-fglyph">ƒ</span> Method Explorer
           </button>
         </div>
+
         <div className="graph-heading">
           <div>
-            <h2>{activeView === "tree" ? "Dependency tree" : "Dependency graph"}</h2>
+            <h2>
+              {activeView === "tree"
+                ? "Dependency tree"
+                : activeView === "graph"
+                  ? "Dependency graph"
+                  : "Method Explorer"}
+            </h2>
+
             <p>
               {activeView === "tree"
                 ? "Expand a folder or file to explore its dependencies."
-                : "Click a node to reveal or hide its direct dependencies. Full paths are available on hover."}
+                : activeView === "graph"
+                  ? "Click a node to reveal or hide its direct dependencies. Full paths are available on hover."
+                  : "Inspect a function, component, or method as an interactive call tree and graph."}
             </p>
           </div>
 
-          <span>
-            {tree
-              ? `${countDependencies(tree) + 1} entries`
-              : "No tree loaded"}
-          </span>
-        </div>
-
-        <div className="tree-actions">
-          <button type="button" onClick={expandAll} disabled={!tree}>
-            Expand all
-          </button>
-
-          <button type="button" onClick={collapseAll} disabled={!tree}>
-            Collapse all
-          </button>
-
-          {normalizedSearch && (
-            <span>{matchingFiles.size} matching file(s)</span>
+          {activeView !== "method" && (
+            <span>{tree ? `${countDependencies(tree) + 1} entries` : "No tree loaded"}</span>
           )}
         </div>
 
-        {stats && (
+        {activeView !== "method" && (
+          <div className="tree-actions">
+            <button type="button" onClick={expandAll} disabled={!tree}>
+              Expand all
+            </button>
+
+            <button type="button" onClick={collapseAll} disabled={!tree}>
+              Collapse all
+            </button>
+
+            {normalizedSearch && <span>{matchingFiles.size} matching file(s)</span>}
+          </div>
+        )}
+
+        {stats && activeView !== "method" && (
           <div className="dependency-legend">
             <span>
               <span className="dependency-badge shared-badge">SHARED</span>
@@ -780,132 +765,178 @@ export default function App() {
             </span>
 
             <span>
-              <span className="dependency-badge circular-badge">
-                CIRCULAR
-              </span>
+              <span className="dependency-badge circular-badge">CIRCULAR</span>
               Points back to an ancestor
             </span>
           </div>
         )}
 
-        {activeView === "tree" ? (
-  <div className="dependency-tree">
-    {!tree && !loading && (
-      <p className="tree-empty">
-        Enter your project details and click Generate tree.
-      </p>
-    )}
+        {activeView === "tree" && (
+          <div className="dependency-tree">
+            {!tree && !loading && (
+              <p className="tree-empty">Enter your project details and click Generate tree.</p>
+            )}
 
-    {loading && (
-      <p className="tree-empty">
-        Scanning project dependencies...
-      </p>
-    )}
+            {loading && <p className="tree-empty">Scanning project dependencies...</p>}
 
-    {tree && renderNode(tree, 0)}
-  </div>
- ) : (
-  <div className="graph-workspace">
-    <div className="dependency-flow graph-view-progressive">
-      {graphData ? (
-        <>
-          <div className="graph-toolbar">
-            <span className="graph-hint">
-              Showing {flowNodes.length} of {graphData.nodes.length} files. Select a node to inspect it; click again to expand or collapse its dependencies.
-            </span>
-            <button type="button" onClick={resetGraphView}>Reset graph</button>
+            {tree && renderNode(tree, 0)}
           </div>
-          <ReactFlow
-            style={{ flex: 1, minHeight: 0 }}
-            nodes={flowNodes}
-            edges={flowEdges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onNodeClick={(_, node) => handleGraphNodeClick(node.id)}
-            fitView
-            fitViewOptions={{ padding: 0.25, minZoom: 0.35, maxZoom: 1 }}
-            minZoom={0.15}
-            maxZoom={1.5}
-            nodesDraggable
-            nodesConnectable={false}
-            elementsSelectable
-          >
-            <Background gap={22} size={1} />
-            <Controls />
-            <MiniMap
-              pannable
-              zoomable
-              nodeColor={(node) =>
-                String(node.data.label).includes("SHARED") ? "#3b82f6" : "#64748b"
-              }
-            />
-          </ReactFlow>
-        </>
-      ) : (
-        <p className="tree-empty">Generate a dependency tree first.</p>
-      )}
-    </div>
+        )}
 
-    <aside className="file-details-panel">
-      {selectedGraphNode ? (
-        <>
-          <div className="file-details-header">
-            <h3 style={{ margin: 0, fontSize: 18 }}>File details</h3>
-            <button className="file-details-close" type="button" onClick={() => setSelectedGraphNodeId(null)} aria-label="Close file details">×</button>
-          </div>
-          <h4 className="file-details-title">{selectedGraphNode.label || getShortLabel(selectedGraphNode.filePath)}</h4>
-          <div className="file-details-path">
-            <strong>Full path</strong><br />{selectedGraphNode.filePath}
-          </div>
-          <div className="file-details-meta">
-            <span className="tree-count">{selectedGraphNode.dependencies.length} imports</span>
-            <span className="tree-count">{selectedGraphNode.importedBy.length} imported by</span>
-            {selectedGraphNode.isShared && <span className="dependency-badge shared-badge">SHARED</span>}
-            {selectedGraphNode.isCircular && <span className="dependency-badge circular-badge">CIRCULAR</span>}
-          </div>
-          <section className="file-details-section">
-            <h4>Imports ({selectedGraphNode.dependencies.length})</h4>
-            {selectedGraphNode.dependencies.length ? (
-              <ul className="file-details-list">
-                {selectedGraphNode.dependencies.map((item) => (
-                  <li key={item.id}>
-                    <button type="button" onClick={() => setSelectedGraphNodeId(item.id)} title={item.filePath}>
-                      {getShortLabel(item.filePath)}
+        {activeView === "graph" && (
+          <div className="graph-workspace">
+            <div className="dependency-flow graph-view-progressive">
+              {graphData ? (
+                <>
+                  <div className="graph-toolbar">
+                    <span className="graph-hint">
+                      Showing {flowNodes.length} of {graphData.nodes.length} files. Select a node to
+                      inspect it; click again to expand or collapse its dependencies.
+                    </span>
+
+                    <button type="button" onClick={resetGraphView}>
+                      Reset graph
                     </button>
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="file-details-empty">No outgoing dependencies found.</p>}
-          </section>
-          <section className="file-details-section">
-            <h4>Imported by ({selectedGraphNode.importedBy.length})</h4>
-            {selectedGraphNode.importedBy.length ? (
-              <ul className="file-details-list">
-                {selectedGraphNode.importedBy.map((item) => (
-                  <li key={item.id}>
-                    <button type="button" onClick={() => setSelectedGraphNodeId(item.id)} title={item.filePath}>
-                      {getShortLabel(item.filePath)}
+                  </div>
+
+                  <ReactFlow
+                    style={{ flex: 1, minHeight: 0 }}
+                    nodes={flowNodes}
+                    edges={flowEdges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onNodeClick={(_, node) => handleGraphNodeClick(node.id)}
+                    fitView
+                    fitViewOptions={{ padding: 0.25, minZoom: 0.35, maxZoom: 1 }}
+                    minZoom={0.15}
+                    maxZoom={1.5}
+                    nodesDraggable
+                    nodesConnectable={false}
+                    elementsSelectable
+                  >
+                    <Background gap={22} size={1} />
+                    <Controls />
+                    <MiniMap
+                      pannable
+                      zoomable
+                      nodeColor={(node) =>
+                        String(node.data.label).includes("SHARED") ? "#3b82f6" : "#64748b"
+                      }
+                    />
+                  </ReactFlow>
+                </>
+              ) : (
+                <p className="tree-empty">Generate a dependency tree first.</p>
+              )}
+            </div>
+
+            <aside className="file-details-panel">
+              {selectedGraphNode ? (
+                <>
+                  <div className="file-details-header">
+                    <h3 style={{ margin: 0, fontSize: 18 }}>File details</h3>
+
+                    <button
+                      className="file-details-close"
+                      type="button"
+                      onClick={() => setSelectedGraphNodeId(null)}
+                      aria-label="Close file details"
+                    >
+                      ×
                     </button>
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="file-details-empty">No importing files found.</p>}
-          </section>
-          {selectedGraphNode.isCircular && (
-            <p className="file-details-circular-note">
-              A dependency path from this file eventually leads back to itself.
-            </p>
-          )}
-        </>
-      ) : (
-        <div className="file-details-empty-state">
-          <h3>File details</h3>
-          Select a node in the graph to inspect its imports, importing files, and dependency relationships.
-        </div>
-      )}
-    </aside>
-  </div>
-)}
+                  </div>
+
+                  <h4 className="file-details-title">
+                    {selectedGraphNode.label || getShortLabel(selectedGraphNode.filePath)}
+                  </h4>
+
+                  <div className="file-details-path">
+                    <strong>Full path</strong>
+                    <br />
+                    {selectedGraphNode.filePath}
+                  </div>
+
+                  <div className="file-details-meta">
+                    <span className="tree-count">{selectedGraphNode.dependencies.length} imports</span>
+                    <span className="tree-count">{selectedGraphNode.importedBy.length} imported by</span>
+                    {selectedGraphNode.isShared && (
+                      <span className="dependency-badge shared-badge">SHARED</span>
+                    )}
+                    {selectedGraphNode.isCircular && (
+                      <span className="dependency-badge circular-badge">CIRCULAR</span>
+                    )}
+                  </div>
+
+                  <section className="file-details-section">
+                    <h4>Imports ({selectedGraphNode.dependencies.length})</h4>
+
+                    {selectedGraphNode.dependencies.length ? (
+                      <ul className="file-details-list">
+                        {selectedGraphNode.dependencies.map((item) => (
+                          <li key={item.id}>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedGraphNodeId(item.id)}
+                              title={item.filePath}
+                            >
+                              {getShortLabel(item.filePath)}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="file-details-empty">No outgoing dependencies found.</p>
+                    )}
+                  </section>
+
+                  <section className="file-details-section">
+                    <h4>Imported by ({selectedGraphNode.importedBy.length})</h4>
+
+                    {selectedGraphNode.importedBy.length ? (
+                      <ul className="file-details-list">
+                        {selectedGraphNode.importedBy.map((item) => (
+                          <li key={item.id}>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedGraphNodeId(item.id)}
+                              title={item.filePath}
+                            >
+                              {getShortLabel(item.filePath)}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="file-details-empty">No importing files found.</p>
+                    )}
+                  </section>
+
+                  {selectedGraphNode.isCircular && (
+                    <p className="file-details-circular-note">
+                      A dependency path from this file eventually leads back to itself.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="file-details-empty-state">
+                  <h3>File details</h3>
+                  Select a node in the graph to inspect its imports, importing files, and
+                  dependency relationships.
+                </div>
+              )}
+            </aside>
+          </div>
+        )}
+
+        {activeView === "method" && (
+          <MethodExplorer
+            projectPath={projectPath}
+            // optional overrides:
+            // apiUrl="http://127.0.0.1:4174/api/explain-method"
+            // defaultSymbol="generateGraph"
+            // defaultFilePath="viewer/src/App.tsx"
+          />
+        )}
 
         <footer>
           <span>Project: {projectPath || "Not selected"}</span>

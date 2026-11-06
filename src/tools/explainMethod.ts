@@ -7,6 +7,8 @@ import * as ts from "typescript";
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_SOURCE_LINES = 250;
 const MAX_SEARCH_FILES = 5000;
+/** How many levels of project-function calls are expanded under each call. */
+const MAX_CALL_TREE_DEPTH = 2;
 
 const IGNORED_DIRECTORIES = new Set([
   "node_modules", ".git", "dist", "build", "coverage",
@@ -71,10 +73,15 @@ interface CallInfo {
   category: CallCategory;
   expression: string;
   line: number;
+  filePath: string;
+  awaited: boolean;
+  description: string;
   target?: string;
   targetFilePath?: string;
   targetKind?: SymbolKind;
   targetClassName?: string;
+  /** Calls made by the target function (project functions only, depth-limited). */
+  children?: CallInfo[];
 }
 
 interface CallerInfo {
@@ -84,6 +91,17 @@ interface CallerInfo {
   kind: SymbolKind;
   className?: string;
   expression: string;
+}
+
+interface BranchDetail {
+  kind: "if" | "ternary" | "switch";
+  line: number;
+  text: string;
+}
+
+interface AwaitDetail {
+  line: number;
+  text: string;
 }
 
 interface MethodExplanation {
@@ -112,6 +130,8 @@ interface MethodExplanation {
     assignments: number;
     stateHooks: string[];
     effects: string[];
+    branchDetails: BranchDetail[];
+    awaitDetails: AwaitDetail[];
   };
   relatedSymbols: string[];
   warnings: string[];
@@ -144,6 +164,7 @@ const REACT_HOOKS = new Set([
   "useFormStatus",
 ]);
 
+/** Global JS/TS objects and functions. */
 const BUILTIN_CALLS = new Set([
   "Array", "Boolean", "Date", "Error", "Map", "Object", "Promise", "RegExp",
   "Set", "String", "Number", "parseInt", "parseFloat", "isNaN", "JSON",
@@ -151,11 +172,23 @@ const BUILTIN_CALLS = new Set([
   "clearInterval", "requestAnimationFrame", "cancelAnimationFrame",
 ]);
 
+/** Methods that live on built-in types (Array, String, JSON, Map, ...). */
+const BUILTIN_METHODS = new Set([
+  "trim", "trimStart", "trimEnd", "endsWith", "startsWith", "includes",
+  "indexOf", "lastIndexOf", "find", "findIndex", "findLast", "filter", "map",
+  "flatMap", "flat", "reduce", "reduceRight", "forEach", "some", "every",
+  "join", "split", "slice", "splice", "sort", "reverse", "concat", "push",
+  "pop", "shift", "unshift", "replace", "replaceAll", "match", "toLowerCase",
+  "toUpperCase", "toString", "toFixed", "toLocaleString", "stringify",
+  "parse", "keys", "values", "entries", "has", "add", "from", "isArray",
+  "assign", "freeze", "floor", "ceil", "round", "min", "max", "abs",
+]);
+
+/** Network / framework calls that leave the project. */
 const COMMON_EXTERNAL_CALLS = new Set([
   "fetch", "axios", "get", "post", "put", "patch", "delete", "request",
-  "dispatch", "navigate", "push", "replace", "json", "stringify", "parse",
-  "trim", "endsWith", "startsWith", "includes", "find", "filter", "map",
-  "reduce", "forEach", "some", "every", "join", "split", "slice", "sort",
+  "dispatch", "navigate", "json", "then", "catch", "finally",
+  "addEventListener", "removeEventListener",
 ]);
 
 function isInsideRoot(root: string, target: string): boolean {
@@ -294,23 +327,48 @@ function getClassName(node: ts.Node): string | undefined {
   return findContainingClass(node)?.name?.text;
 }
 
-function isExported(node: ts.Node): boolean {
-  let current: ts.Node | undefined = node;
-  while (current) {
-    if (
-      ts.canHaveModifiers(current) &&
-      (ts.getModifiers(current)?.some(
-        (modifier) =>
-          modifier.kind === ts.SyntaxKind.ExportKeyword ||
-          modifier.kind === ts.SyntaxKind.DefaultKeyword,
-      ) ?? false)
-    ) {
-      return true;
-    }
-    if (ts.isSourceFile(current)) break;
-    current = current.parent;
+/**
+ * A symbol is exported only when it is a top-level declaration that is
+ * exported directly (`export function x`, `export const x = ...`,
+ * `export default function x`) or re-exported by a top-level statement
+ * (`export { x }`, `export default x`).
+ *
+ * Nested functions, such as a handler inside an exported component,
+ * are NOT exported.
+ */
+function isExported(node: ts.Node, sourceFile: ts.SourceFile): boolean {
+  // For `const x = () => {}` the modifiers live on the VariableStatement.
+  const holder: ts.Node | undefined = ts.isVariableDeclaration(node)
+    ? node.parent?.parent
+    : node;
+
+  if (!holder || holder.parent !== sourceFile) return false;
+
+  if (
+    hasModifier(holder, ts.SyntaxKind.ExportKeyword) ||
+    hasModifier(holder, ts.SyntaxKind.DefaultKeyword)
+  ) {
+    return true;
   }
-  return false;
+
+  const name = getNodeName(node);
+  if (!name) return false;
+
+  return sourceFile.statements.some((statement) => {
+    if (
+      ts.isExportDeclaration(statement) &&
+      statement.exportClause &&
+      ts.isNamedExports(statement.exportClause)
+    ) {
+      return statement.exportClause.elements.some(
+        (element) => (element.propertyName ?? element.name).text === name,
+      );
+    }
+    if (ts.isExportAssignment(statement) && ts.isIdentifier(statement.expression)) {
+      return statement.expression.text === name;
+    }
+    return false;
+  });
 }
 
 function collectCandidates(sourceFile: ts.SourceFile, filePath: string): SymbolCandidate[] {
@@ -474,10 +532,15 @@ function categorizeCall(
   }
 
   if (isStateSetter(name)) return { category: "state-setter" };
-  if (BUILTIN_CALLS.has(name) || COMMON_EXTERNAL_CALLS.has(name)) {
-    return {
-      category: BUILTIN_CALLS.has(name) ? "builtin" : "external",
-    };
+
+  // JS/TS built-ins (find, endsWith, JSON.stringify, ...) are purple "Built-in".
+  if (BUILTIN_CALLS.has(name) || BUILTIN_METHODS.has(name)) {
+    return { category: "builtin" };
+  }
+
+  // Network / framework calls (fetch, json, axios, ...) are blue "External".
+  if (COMMON_EXTERNAL_CALLS.has(name)) {
+    return { category: "external" };
   }
 
   const target = getCandidateTarget(name, expression, current, index);
@@ -495,10 +558,57 @@ function categorizeCall(
   return { category: "external" };
 }
 
+/** One-line, human-readable description shown in the "Details" column. */
+function describeCall(
+  name: string,
+  category: CallCategory,
+  awaited: boolean,
+  target?: SymbolCandidate,
+): string {
+  let text: string;
+
+  switch (category) {
+    case "recursive":
+      text = "Calls itself recursively";
+      break;
+    case "project-symbol":
+    case "local-function":
+    case "class-method": {
+      const doc = target
+        ? getDocumentation(target.node).split("\n")[0].trim()
+        : "";
+      text =
+        doc ||
+        (target
+          ? `Defined in ${target.filePath}:${target.startLine}`
+          : "Project function");
+      break;
+    }
+    case "react-hook":
+      text = "React hook";
+      break;
+    case "state-setter":
+      text = "React state setter";
+      break;
+    case "builtin":
+      text = "JS/TS built-in method";
+      break;
+    case "external":
+      text = name === "fetch" ? "Network request" : "External / library call";
+      break;
+    default:
+      text = "Unresolved call";
+  }
+
+  return awaited ? `${text} (await)` : text;
+}
+
 function analyzeCalls(
   node: ts.Node,
   current: SymbolCandidate,
   index: AnalysisIndex,
+  depth = 0,
+  seen: Set<ts.Node> = new Set([current.node]),
 ): CallInfo[] {
   const calls: CallInfo[] = [];
   const callable = getCallableNode(node);
@@ -510,12 +620,16 @@ function analyzeCalls(
       const line = current.sourceFile.getLineAndCharacterOfPosition(
         child.getStart(current.sourceFile),
       ).line + 1;
+      const awaited = ts.isAwaitExpression(child.parent);
 
-      calls.push({
+      const info: CallInfo = {
         name,
         category: result.category,
         expression: getCallExpressionText(child.expression),
         line,
+        filePath: current.filePath,
+        awaited,
+        description: describeCall(name, result.category, awaited, result.target),
         ...(result.target
           ? {
               target: result.target.name,
@@ -524,7 +638,27 @@ function analyzeCalls(
               ...(result.target.className ? { targetClassName: result.target.className } : {}),
             }
           : {}),
-      });
+      };
+
+      // Expand project functions one more level (cycle-safe, depth-limited).
+      const target = result.target;
+      if (
+        target &&
+        result.category !== "recursive" &&
+        depth < MAX_CALL_TREE_DEPTH &&
+        !seen.has(target.node)
+      ) {
+        const children = analyzeCalls(
+          target.node,
+          target,
+          index,
+          depth + 1,
+          new Set(seen).add(target.node),
+        );
+        if (children.length > 0) info.children = children;
+      }
+
+      calls.push(info);
     }
 
     ts.forEachChild(child, visit);
@@ -541,12 +675,20 @@ function analyzeBehavior(
   const calls = new Set<string>();
   const stateHooks = new Set<string>();
   const effects = new Set<string>();
+  const branchDetails: BranchDetail[] = [];
+  const awaitDetails: AwaitDetail[] = [];
   let conditions = 0;
   let loops = 0;
   let awaits = 0;
   let throws = 0;
   let returns = 0;
   let assignments = 0;
+
+  const sourceFile = node.getSourceFile();
+  const lineOf = (target: ts.Node) =>
+    sourceFile.getLineAndCharacterOfPosition(target.getStart(sourceFile)).line + 1;
+  const snippet = (target: ts.Node) =>
+    target.getText(sourceFile).replace(/\s+/g, " ").slice(0, 90);
 
   for (const call of callDetails) {
     calls.add(call.name);
@@ -557,11 +699,16 @@ function analyzeBehavior(
   }
 
   const visit = (child: ts.Node) => {
-    if (
-      ts.isIfStatement(child) ||
-      ts.isConditionalExpression(child) ||
-      ts.isSwitchStatement(child)
-    ) conditions++;
+    if (ts.isIfStatement(child)) {
+      conditions++;
+      branchDetails.push({ kind: "if", line: lineOf(child), text: snippet(child.expression) });
+    } else if (ts.isConditionalExpression(child)) {
+      conditions++;
+      branchDetails.push({ kind: "ternary", line: lineOf(child), text: snippet(child.condition) });
+    } else if (ts.isSwitchStatement(child)) {
+      conditions++;
+      branchDetails.push({ kind: "switch", line: lineOf(child), text: snippet(child.expression) });
+    }
 
     if (
       ts.isForStatement(child) ||
@@ -571,7 +718,10 @@ function analyzeBehavior(
       ts.isDoStatement(child)
     ) loops++;
 
-    if (ts.isAwaitExpression(child)) awaits++;
+    if (ts.isAwaitExpression(child)) {
+      awaits++;
+      awaitDetails.push({ line: lineOf(child), text: snippet(child.expression) });
+    }
     if (ts.isThrowStatement(child)) throws++;
     if (ts.isReturnStatement(child)) returns++;
 
@@ -603,6 +753,8 @@ function analyzeBehavior(
     assignments,
     stateHooks: [...stateHooks].sort(),
     effects: [...effects].sort(),
+    branchDetails,
+    awaitDetails,
   };
 }
 
@@ -622,10 +774,20 @@ function buildSignature(candidate: SymbolCandidate): string {
       .join(", ");
     const returnType =
       "type" in callable && callable.type ? `: ${callable.type.getText(sourceFile)}` : "";
+
+    // async function generateGraph(): Promise<void>
+    if (candidate.kind === "function") {
+      return `${asyncPrefix}function ${candidate.name}(${parameters})${returnType}`;
+    }
+
+    // const handle = async (event: Event) => {…}
+    if (candidate.kind === "arrow-function" && ts.isVariableDeclaration(node)) {
+      return `const ${candidate.name} = ${asyncPrefix}(${parameters})${returnType} => {…}`;
+    }
+
     const accessorPrefix =
       candidate.kind === "getter" ? "get " :
-      candidate.kind === "setter" ? "set " :
-      candidate.kind === "constructor" ? "" : "";
+      candidate.kind === "setter" ? "set " : "";
 
     return `${asyncPrefix}${accessorPrefix}${candidate.name}(${parameters})${returnType}`;
   }
@@ -811,12 +973,12 @@ async function buildAnalysisIndex(files: string[], root: string, warnings: strin
   return { files: analyses, candidates: allCandidates, byName };
 }
 
-async function explainMethod(
+export const explainMethod = async (
   projectPathInput: string,
   symbol: string,
   filePathInput: string | undefined,
   includeSource: boolean,
-): Promise<MethodExplanation> {
+): Promise<MethodExplanation> => {
   if (!path.isAbsolute(projectPathInput)) {
     throw new Error("projectPath must be an absolute path.");
   }
@@ -919,7 +1081,7 @@ async function explainMethod(
     parameters,
     returnType: getReturnType(candidate.node),
     async: isAsync,
-    exported: isExported(candidate.node),
+    exported: isExported(candidate.node, candidate.sourceFile),
     startLine: candidate.startLine,
     endLine: candidate.endLine,
     ...(source !== undefined ? { source } : {}),
@@ -941,7 +1103,7 @@ export function registerExplainMethodTool(server: McpServer): void {
     "explain_method",
     {
       description:
-        "Inspect a JavaScript or TypeScript function, class, method, constructor, getter, setter, React component, or arrow-function property using the TypeScript AST. Returns its signature, parameters, documentation, source excerpt, categorized calls, recursion detection, callers, control-flow indicators, React hooks, and related project symbols. Read-only.",
+        "Inspect a JavaScript or TypeScript function, class, method, constructor, getter, setter, React component, or arrow-function property using the TypeScript AST. Returns its signature, parameters, documentation, source excerpt, categorized calls (with nested project-function calls), recursion detection, callers, control-flow details, React hooks, and related project symbols. Read-only.",
       inputSchema: {
         projectPath: z.string().min(1).describe(
           "Absolute path to the target project directory.",

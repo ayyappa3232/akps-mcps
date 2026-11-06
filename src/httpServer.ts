@@ -4,6 +4,7 @@ import { realpathSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import { generateDependencyTrace } from "./tools/traceDependencies.js";
+import { explainMethod } from "./tools/explainMethod.js";
 
 const app = express();
 const PORT = 4174;
@@ -158,6 +159,72 @@ app.post("/api/dependencies", (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to generate dependency graph.",
+    });
+  }
+});
+
+app.post("/api/explain-method", async (req, res) => {
+  try {
+    const {
+      projectPath,
+      symbol,
+      filePath,
+      includeSource = true,
+    } = req.body ?? {};
+
+    if (
+      typeof projectPath !== "string" ||
+      typeof symbol !== "string"
+    ) {
+      res.status(400).json({
+        success: false,
+        error: "projectPath and symbol must be strings.",
+      });
+      return;
+    }
+
+    if (!isAbsolute(projectPath)) {
+      res.status(400).json({
+        success: false,
+        error: "projectPath must be an absolute path.",
+      });
+      return;
+    }
+
+    if (
+      filePath !== undefined &&
+      typeof filePath !== "string"
+    ) {
+      res.status(400).json({
+        success: false,
+        error: "filePath must be a string when provided.",
+      });
+      return;
+    }
+
+    if (typeof includeSource !== "boolean") {
+      res.status(400).json({
+        success: false,
+        error: "includeSource must be a boolean.",
+      });
+      return;
+    }
+
+    const result = await explainMethod(
+      projectPath,
+      symbol,
+      filePath,
+      includeSource
+    );
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to explain method.",
     });
   }
 });
