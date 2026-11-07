@@ -16,6 +16,7 @@ import { List, Network } from "lucide-react";
 import "./styles.css";
 import MethodExplorer from "./modules/methodExplorer/MethodExplorer";
 import AnalyzeChangeImpact from "./modules/changeImpact/AnalyzeChangeImpact";
+import CodeQualityAnalyzer from "./modules/codeQuality/CodeQualityAnalyzer";
 
 const defaultProjectPath =
   "/Users/ayyappakumar/Desktop/Ayyappa/Projects/React/My_Projects/PORTFOLIO_PROJECTS/learning-coding-hub";
@@ -321,7 +322,7 @@ export default function App() {
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [activeView, setActiveView] = useState<"tree" | "graph" | "method" | "impact">("tree");
+  const [activeView, setActiveView] = useState<"tree" | "graph" | "method" | "impact" | "quality">("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [expandedGraphNodes, setExpandedGraphNodes] = useState<Set<string>>(new Set());
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
@@ -726,6 +727,14 @@ export default function App() {
           >
             <span className="impact-tab-icon">↯</span> Change Impact
           </button>
+
+          <button
+            type="button"
+            className={activeView === "quality" ? "active" : ""}
+            onClick={() => setActiveView("quality")}
+          >
+            <span className="impact-tab-icon">◈</span> Code Quality
+          </button>
         </div>
 
         <div className="graph-heading">
@@ -737,7 +746,9 @@ export default function App() {
                   ? "Dependency graph"
                   : activeView === "method"
                     ? "Method Explorer"
-                    : "Change Impact Analyzer"}
+                    : activeView === "impact"
+                      ? "Change Impact Analyzer"
+                      : "Code Quality Analyzer"}
             </h2>
 
             <p>
@@ -747,7 +758,9 @@ export default function App() {
                   ? "Click a node to reveal or hide its direct dependencies. Full paths are available on hover."
                   : activeView === "method"
                     ? "Inspect a function, component, or method as an interactive call tree and graph."
-                    : "Analyze direct consumers, downstream impact, risk, and affected symbols before changing code."}
+                    : activeView === "impact"
+                      ? "Analyze direct consumers, downstream impact, risk, and affected symbols before changing code."
+                      : "Assess complexity, maintainability, React activity, and structural hotspots before you refactor."}
             </p>
           </div>
 
@@ -956,6 +969,15 @@ export default function App() {
             projectPath={projectPath}
             // optional overrides:
             // apiUrl="http://127.0.0.1:4174/api/analyze-change-impact"
+            // defaultFilePath="viewer/src/App.tsx"
+            // defaultSymbol="generateGraph"
+          />
+        )}
+
+        {activeView === "quality" && (
+          <CodeQualityAnalyzer
+            projectPath={projectPath}
+            // apiUrl="http://127.0.0.1:4174/api/analyze-code-quality"
             // defaultFilePath="viewer/src/App.tsx"
             // defaultSymbol="generateGraph"
           />

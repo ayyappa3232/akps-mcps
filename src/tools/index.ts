@@ -9,6 +9,7 @@ import { registerTraceDependenciesTool } from "./traceDependencies.js";
 import { registerGenerateDependencyDiagramTool } from "./generateDependencyDiagram.js";
 import { registerExplainMethodTool } from "./explainMethod.js";
 import { registerAnalyzeChangeImpactTool } from "./analyzeChangeImpact.js";
+import { registerAnalyzeCodeQualityTool } from "./analyzeCodeQuality.js";
 
 export function registerAllTools(server: McpServer): void {
   registerHelloDeveloperTool(server);
@@ -20,4 +21,5 @@ export function registerAllTools(server: McpServer): void {
   registerGenerateDependencyDiagramTool(server);
   registerExplainMethodTool(server);
   registerAnalyzeChangeImpactTool(server);
+  registerAnalyzeCodeQualityTool(server);
 }

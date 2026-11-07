@@ -6,6 +6,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { generateDependencyTrace } from "./tools/traceDependencies.js";
 import { explainMethod } from "./tools/explainMethod.js";
 import { analyzeChangeImpact } from "./tools/analyzeChangeImpact.js";
+import { analyzeCodeQuality } from "./tools/analyzeCodeQuality.js";
 
 const app = express();
 const PORT = 4174;
@@ -318,6 +319,30 @@ app.post("/api/analyze-change-impact", async (req, res) => {
           ? error.message
           : "Failed to analyze change impact.",
     });
+  }
+});
+
+app.post("/api/analyze-code-quality", async (req, res) => {
+  try {
+    const { projectPath, filePath, symbol } = req.body ?? {};
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({ success: false, error: "projectPath must be a non-empty string." });
+    }
+    if (filePath !== undefined && typeof filePath !== "string") {
+      return res.status(400).json({ success: false, error: "filePath must be a string when provided." });
+    }
+    if (symbol !== undefined && typeof symbol !== "string") {
+      return res.status(400).json({ success: false, error: "symbol must be a string when provided." });
+    }
+    if (!isAbsolute(projectPath)) {
+      return res.status(400).json({ success: false, error: "projectPath must be an absolute path." });
+    }
+    if (filePath !== undefined && (path.isAbsolute(filePath) || filePath.split(/[\\/]/).includes(".."))) {
+      return res.status(400).json({ success: false, error: "filePath must be relative to projectPath." });
+    }
+    res.json(await analyzeCodeQuality(projectPath, filePath, symbol));
+  } catch (error) {
+    res.status(500).json({ success: false, tool: "analyze_code_quality", error: error instanceof Error ? error.message : "Failed to analyze code quality." });
   }
 });
 
