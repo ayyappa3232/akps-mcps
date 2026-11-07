@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import * as ts from "typescript";
 
@@ -64,6 +64,8 @@ export interface CodeQualityReport {
   target: {
     filePath?: string;
     symbol?: string;
+    scope: "file" | "symbol" | "project";
+    resolvedPath?: string;
   };
   summary: {
     score: number;
@@ -257,9 +259,20 @@ function calculateFunctionMetrics(
       reactSignals += 1;
     }
 
-    ts.forEachChild(current, (child) =>
-      visit(child, increasesNesting ? depth + 1 : depth),
-    );
+    ts.forEachChild(current, (child) => {
+      // A nested function has its own complexity boundary. Do not count its
+      // control flow as part of the parent function's complexity.
+      if (
+        child !== node &&
+        (ts.isFunctionLike(child) ||
+          ts.isClassDeclaration(child) ||
+          ts.isClassExpression(child))
+      ) {
+        return;
+      }
+
+      visit(child, increasesNesting ? depth + 1 : depth);
+    });
   }
 
   visit(node, 0);
@@ -418,21 +431,44 @@ function calculateScore(issues: QualityIssue[]): number {
     info: 0,
     low: 2,
     medium: 6,
-    high: 11,
-    critical: 18,
+    high: 12,
+    critical: 20,
   };
 
-  const seenByKind = new Map<string, number>();
-  let penalty = 0;
+  // Score each category independently so one repeated hotspot cannot
+  // accidentally dominate the entire result.
+  const byKind = new Map<string, QualityIssue[]>();
 
   for (const issue of issues) {
-    const occurrence = seenByKind.get(issue.kind) ?? 0;
-    const repetitionFactor = 1 + Math.min(occurrence, 3) * 0.25;
-    penalty += basePenalty[issue.severity] * repetitionFactor;
-    seenByKind.set(issue.kind, occurrence + 1);
+    const bucket = byKind.get(issue.kind) ?? [];
+    bucket.push(issue);
+    byKind.set(issue.kind, bucket);
   }
 
-  return Math.round(Math.max(15, Math.min(100, 100 - Math.min(85, penalty))));
+  let penalty = 0;
+
+  for (const bucket of byKind.values()) {
+    const ordered = [...bucket].sort((a, b) => {
+      const severityWeight: Record<Severity, number> = {
+        critical: 5,
+        high: 4,
+        medium: 3,
+        low: 2,
+        info: 1,
+      };
+
+      return severityWeight[b.severity] - severityWeight[a.severity];
+    });
+
+    ordered.slice(0, 5).forEach((issue, index) => {
+      // Repeated findings matter, but each additional finding has a smaller
+      // impact than the previous one.
+      const diminishingFactor = 1 / (1 + index * 0.25);
+      penalty += basePenalty[issue.severity] * diminishingFactor;
+    });
+  }
+
+  return Math.max(0, Math.min(100, Math.round(100 - penalty)));
 }
 
 export async function analyzeCodeQuality(
@@ -459,7 +495,9 @@ export async function analyzeCodeQuality(
     const target = targets[0];
 
     if (!isInsideProject(root, target)) {
-      throw new Error("filePath must stay inside projectPath.");
+      throw new Error(
+        `File path is outside projectPath: ${filePath}.`,
+      );
     }
 
     let targetStats;
@@ -475,6 +513,28 @@ export async function analyzeCodeQuality(
     if (!targetStats.isFile()) {
       throw new Error(
         `The specified path is not a file: ${relativePath(root, target)}.`,
+      );
+    }
+
+    // A symlink can resolve outside the project even when the textual path
+    // looks safe. Reject that case explicitly.
+    try {
+      const [realRoot, realTarget] = await Promise.all([
+        realpath(root),
+        realpath(target),
+      ]);
+
+      if (!isInsideProject(realRoot, realTarget)) {
+        throw new Error(
+          `Resolved file is outside projectPath: ${relativePath(root, target)}.`,
+        );
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Resolved file is outside")) {
+        throw error;
+      }
+      throw new Error(
+        `Could not resolve file: ${relativePath(root, target)}.`,
       );
     }
 
@@ -575,14 +635,32 @@ export async function analyzeCodeQuality(
 
     if (symbol && selectedCandidates.length === 0) {
       throw new Error(
-        `Symbol "${symbol}" was not found in ${relativePath(root, file)}.`,
+        `Symbol "${symbol}" was not found in ${relativePath(root, file)}. ` +
+        `The file exists, but no function, method, getter, setter, constructor, ` +
+        `or function-valued variable with that exact name was found.`,
       );
     }
 
-    lines += content.split(/\r?\n/).length;
+    if (symbol) {
+      warnings.push(
+        `Analyzed symbol "${symbol}" only; file-level functions and other symbols were excluded from this report.`,
+      );
+    }
+
+    const fileLineCount = content.split(/\r?\n/).length;
+
+    // When a symbol is selected, "lines" means the selected symbol's source
+    // span. For file/project analysis it remains the total source-file lines.
+    if (!symbol) {
+      lines += fileLineCount;
+    }
 
     for (const candidate of selectedCandidates) {
       const metric = calculateFunctionMetrics(sourceFile, candidate.node);
+
+      if (symbol) {
+        lines += metric.lines;
+      }
 
       metrics.push({
         filePath: relativePath(root, file),
@@ -820,7 +898,23 @@ export async function analyzeCodeQuality(
     }
   }
 
-  const limitedIssues = issues.slice(0, MAX_ISSUES);
+  const severityOrder: Record<Severity, number> = {
+    critical: 0,
+    high: 1,
+    medium: 2,
+    low: 3,
+    info: 4,
+  };
+
+  const limitedIssues = [...issues]
+    .sort(
+      (a, b) =>
+        severityOrder[a.severity] - severityOrder[b.severity] ||
+        a.startLine - b.startLine ||
+        a.id.localeCompare(b.id),
+    )
+    .slice(0, MAX_ISSUES);
+
   const qualityScore = calculateScore(limitedIssues);
   const suggestions = [
     ...new Set(limitedIssues.slice(0, 8).map((issue) => issue.suggestion)),
@@ -838,9 +932,13 @@ export async function analyzeCodeQuality(
     projectPath: root,
     target: {
       ...(filePath
-        ? { filePath: relativePath(root, path.resolve(root, filePath)) }
+        ? {
+            filePath: relativePath(root, path.resolve(root, filePath)),
+            resolvedPath: path.resolve(root, filePath),
+          }
         : {}),
       ...(symbol ? { symbol } : {}),
+      scope: symbol ? "symbol" : filePath ? "file" : "project",
     },
     summary: {
       score: qualityScore,
