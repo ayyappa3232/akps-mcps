@@ -916,6 +916,168 @@
   background: #142034;
 }
 
+/* ---------------------------------------------------------
+   Developer Fix Prompt
+   --------------------------------------------------------- */
+
+.cqa .cqa-ai-fix-panel {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(129, 120, 255, 0.34);
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(76, 63, 160, 0.18),
+      rgba(17, 28, 47, 0.96)
+    );
+  overflow: hidden;
+}
+
+.cqa .cqa-ai-fix-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+}
+
+.cqa .cqa-ai-fix-head > div:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.cqa .cqa-ai-fix-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #e9e7ff;
+}
+
+.cqa .cqa-ai-fix-title svg {
+  flex: 0 0 auto;
+  color: #aaa3ff;
+}
+
+.cqa .cqa-ai-fix-title strong {
+  color: #e9e7ff;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.cqa .cqa-ai-fix-head p {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: #8797ae;
+  font-size: 9.5px;
+  line-height: 1.55;
+}
+
+.cqa .cqa-copy-prompt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(129, 120, 255, 0.45);
+  border-radius: 8px;
+  background: rgba(117, 108, 244, 0.12);
+  color: #c4b5fd;
+  font-size: 9px;
+  font-weight: 850;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.cqa .cqa-copy-prompt:hover {
+  border-color: rgba(129, 120, 255, 0.8);
+  background: rgba(117, 108, 244, 0.22);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.cqa .cqa-copy-prompt.copied {
+  border-color: rgba(52, 211, 153, 0.5);
+  background: rgba(27, 130, 100, 0.14);
+  color: #6ee7b7;
+}
+
+.cqa .cqa-ai-fix-prompt {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  max-height: 360px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid rgba(100, 125, 158, 0.24);
+  border-radius: 10px;
+  background: #09111e;
+  color: #cbd5e1;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    monospace;
+  font-size: 9px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 120, 255, 0.55) transparent;
+}
+
+.cqa .cqa-ai-fix-prompt::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.cqa .cqa-ai-fix-prompt::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cqa .cqa-ai-fix-prompt::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(129, 120, 255, 0.5);
+}
+
+.cqa .cqa-ai-fix-prompt::-webkit-scrollbar-thumb:hover {
+  background: rgba(129, 120, 255, 0.75);
+}
+
+/* Keep the fix prompt usable on smaller screens */
+@media (max-width: 760px) {
+  .cqa .cqa-ai-fix-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cqa .cqa-copy-prompt {
+    width: 100%;
+  }
+
+  .cqa .cqa-ai-fix-prompt {
+    max-height: 420px;
+    font-size: 8.5px;
+  }
+}
+
 .cqa .cqa-fix-steps > strong {
   display: block;
   margin-bottom: 8px;
@@ -1327,5 +1489,398 @@
 
   .cqa .cqa-issue-copy small {
     white-space: normal;
+  }
+}
+
+
+/* ---------------------------------------------------------
+   Developer fix prompt
+   --------------------------------------------------------- */
+
+.cqa .cqa-ai-fix-panel {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid rgba(129, 120, 255, 0.28);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(117, 108, 244, 0.08), rgba(15, 27, 45, 0.92));
+}
+
+.cqa .cqa-ai-fix-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cqa .cqa-ai-fix-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #dfe7f3;
+  font-size: 10.5px;
+}
+
+.cqa .cqa-ai-fix-title svg {
+  color: #aaa3ff;
+}
+
+.cqa .cqa-ai-fix-head p {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: #8998b1;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.cqa .cqa-copy-prompt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid rgba(129, 120, 255, 0.42);
+  border-radius: 8px;
+  background: rgba(117, 108, 244, 0.12);
+  color: #c8c3ff;
+  font-size: 9px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.cqa .cqa-copy-prompt:hover {
+  background: rgba(117, 108, 244, 0.2);
+  border-color: rgba(159, 151, 255, 0.65);
+}
+
+.cqa .cqa-copy-prompt:active {
+  transform: translateY(1px);
+}
+
+.cqa .cqa-copy-prompt.copied {
+  border-color: rgba(52, 211, 153, 0.5);
+  background: rgba(52, 211, 153, 0.1);
+  color: #6ee7b7;
+}
+
+.cqa .cqa-ai-fix-prompt {
+  max-height: 330px;
+  margin: 12px 0 0;
+  padding: 13px;
+  overflow: auto;
+  border: 1px solid rgba(100, 125, 158, 0.2);
+  border-radius: 9px;
+  background: #0b1423;
+  color: #b9c5d8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 8.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .cqa .cqa-ai-fix-head {
+    flex-direction: column;
+  }
+
+  .cqa .cqa-copy-prompt {
+    width: 100%;
+  }
+}
+
+/* =========================================================
+   Code Quality Analyzer - Scroll Fix
+   ========================================================= */
+
+/*
+ * IMPORTANT:
+ * Keep the existing Code Quality Analyzer styles.
+ * Add these rules at the very END so they override earlier
+ * overflow/max-height rules.
+ */
+
+/* Allow the analyzer itself to use the available viewport */
+.cqa {
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+/* Main two-column workspace */
+.cqa .cqa-workspace {
+  min-height: 0;
+  align-items: stretch;
+}
+
+/* Left main panel */
+.cqa .cqa-main {
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/*
+ * This is the important part:
+ * the content area becomes the scrolling container.
+ *
+ * This allows:
+ * Overview
+ * Issues
+ * Issue Details
+ * Developer Fix Prompt
+ * Metrics
+ * Suggestions
+ *
+ * to scroll without breaking the surrounding layout.
+ */
+.cqa .cqa-main-content {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px;
+
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 120, 255, 0.55) transparent;
+}
+
+.cqa .cqa-main-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cqa .cqa-main-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cqa .cqa-main-content::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(129, 120, 255, 0.45);
+}
+
+.cqa .cqa-main-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(129, 120, 255, 0.7);
+}
+
+
+/* =========================================================
+   Quality Inspector
+   ========================================================= */
+
+.cqa .cqa-inspector {
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+}
+
+.cqa .cqa-inspector-head {
+  flex: 0 0 auto;
+}
+
+/*
+ * Remove the old fixed max-height such as 632px.
+ * The inspector now fills the available panel height and
+ * scrolls internally.
+ */
+.cqa .cqa-inspector-body {
+  min-height: 0;
+  flex: 1 1 auto;
+
+  max-height: none;
+  height: auto;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  padding: 4px 15px 18px;
+
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 120, 255, 0.55) transparent;
+}
+
+.cqa .cqa-inspector-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cqa .cqa-inspector-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cqa .cqa-inspector-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(129, 120, 255, 0.45);
+}
+
+.cqa .cqa-inspector-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(129, 120, 255, 0.7);
+}
+
+
+/* =========================================================
+   Issue detail
+   ========================================================= */
+
+.cqa .cqa-detail {
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  display: grid;
+  gap: 14px;
+}
+
+
+/* Prevent long text from forcing the panel wider */
+.cqa .cqa-detail-message,
+.cqa .cqa-detail-box,
+.cqa .cqa-fix-steps,
+.cqa .cqa-ai-fix-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+
+/* =========================================================
+   Developer Fix Prompt
+   ========================================================= */
+
+.cqa .cqa-ai-fix-panel {
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.cqa .cqa-ai-fix-head {
+  min-width: 0;
+  max-width: 100%;
+}
+
+
+/*
+ * The prompt itself gets its OWN scrollbar.
+ * This is what lets the user read the entire generated
+ * Copilot/ChatGPT prompt.
+ */
+.cqa .cqa-ai-fix-prompt {
+  display: block;
+
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+
+  height: auto;
+  min-height: 180px;
+  max-height: 420px;
+
+  margin: 0;
+  padding: 14px;
+
+  overflow-x: auto;
+  overflow-y: auto;
+
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+
+  box-sizing: border-box;
+
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 120, 255, 0.55) transparent;
+}
+
+.cqa .cqa-ai-fix-prompt::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.cqa .cqa-ai-fix-prompt::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cqa .cqa-ai-fix-prompt::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(129, 120, 255, 0.5);
+}
+
+.cqa .cqa-ai-fix-prompt::-webkit-scrollbar-thumb:hover {
+  background: rgba(129, 120, 255, 0.75);
+}
+
+
+/* =========================================================
+   Issues list
+   ========================================================= */
+
+.cqa .cqa-issues-list {
+  min-width: 0;
+}
+
+
+/* =========================================================
+   Metrics table
+   ========================================================= */
+
+.cqa .cqa-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+
+/* =========================================================
+   Responsive
+   ========================================================= */
+
+@media (max-width: 1000px) {
+  .cqa .cqa-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cqa .cqa-inspector {
+    min-height: 500px;
+  }
+
+  .cqa .cqa-inspector-body {
+    max-height: 600px;
+  }
+}
+
+@media (max-width: 760px) {
+  .cqa .cqa-main-content {
+    overflow-x: hidden;
+    padding: 12px;
+  }
+
+  .cqa .cqa-ai-fix-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cqa .cqa-copy-prompt {
+    width: 100%;
+  }
+
+  .cqa .cqa-ai-fix-prompt {
+    min-height: 160px;
+    max-height: 420px;
+    font-size: 8.5px;
+  }
+
+  .cqa .cqa-inspector {
+    min-height: 450px;
+  }
+
+  .cqa .cqa-inspector-body {
+    max-height: 500px;
   }
 }

@@ -12,6 +12,8 @@ import {
   ShieldAlert,
   Sparkles,
   Activity,
+  Clipboard,
+  Check,
 } from "lucide-react";
 import "./code-quality.css";
 
@@ -98,6 +100,7 @@ export default function CodeQualityAnalyzer({
   const [error, setError] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
 
   async function analyze(): Promise<void> {
     setLoading(true);
@@ -160,7 +163,20 @@ export default function CodeQualityAnalyzer({
 
   function selectTab(nextTab: Tab): void {
     setSelectedIssue(null);
+    setCopiedPrompt(false);
     setTab(nextTab);
+  }
+
+  async function copyFixPrompt(issue: Issue): Promise<void> {
+    const prompt = buildFixPrompt(issue, report);
+
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopiedPrompt(true);
+      window.setTimeout(() => setCopiedPrompt(false), 2200);
+    } catch {
+      setCopiedPrompt(false);
+    }
   }
 
   const statusText = loading
@@ -363,6 +379,8 @@ export default function CodeQualityAnalyzer({
                     report={report}
                     selectedIssue={selectedIssue}
                     onSelect={setSelectedIssue}
+                    copiedPrompt={copiedPrompt}
+                    onCopyPrompt={(issue) => void copyFixPrompt(issue)}
                   />
                 )}
 
@@ -442,6 +460,51 @@ export default function CodeQualityAnalyzer({
       )}
     </div>
   );
+}
+
+function buildFixPrompt(issue: Issue, report: Report | null): string {
+  const target = report?.target.filePath ?? issue.filePath;
+  const symbol = report?.target.symbol ?? issue.symbol ?? "the affected code";
+
+  return `You are fixing a code-quality finding in an existing ${target.endsWith(".tsx") || target.endsWith(".jsx") ? "React" : "TypeScript/JavaScript"} codebase.
+
+TASK
+Fix only this code-quality issue:
+- Issue: ${issue.title}
+- Severity: ${issue.severity}
+- Kind: ${issue.kind}
+- File: ${issue.filePath}
+- Lines: ${issue.startLine}-${issue.endLine}
+- Symbol: ${symbol}
+- Finding: ${issue.message}
+- Why it matters: ${issue.whyItMatters}
+- Suggested improvement: ${issue.suggestion}
+
+RECOMMENDED APPROACH
+${issue.fixSteps.map((step, index) => `${index + 1}. ${step}`).join("\n")}
+
+SAFE REFACTORING RULES
+1. Preserve the existing functional behavior. Do not intentionally change business rules, user flows, API contracts, data formats, navigation behavior, state semantics, error handling, or externally observable behavior unless the finding itself makes that change unavoidable.
+2. Make the smallest focused change that resolves this finding. Do not perform unrelated cleanup, formatting, renaming, dependency upgrades, or architectural rewrites.
+3. Before editing, inspect the affected code and its immediate callers/consumers so the fix does not break existing usage.
+4. Preserve existing public interfaces, exported names, props, function signatures, and module boundaries unless changing one is strictly necessary for the fix.
+5. If the safest fix requires a behavior, API, or contract change, do not silently make that change. Clearly explain what must change, why it is necessary, and what behavior would be affected.
+6. Reuse existing utilities, patterns, types, and conventions in the project instead of introducing unnecessary abstractions or dependencies.
+7. Keep the fix scoped to the reported issue and avoid changing unrelated files.
+8. Preserve accessibility, error handling, loading states, and edge-case behavior.
+9. After the change, run the relevant type-check/build/tests or explain if they cannot be run.
+10. Re-check the original finding and confirm whether it is actually resolved.
+
+VALIDATION
+After making the fix, report:
+- Files changed
+- What was changed and why
+- Confirmation that existing behavior was preserved
+- Tests/type-check/build results
+- Any behavior or API change that was unavoidable
+- Whether this specific code-quality finding should now disappear or improve on the next analysis
+
+Do not change anything outside the scope of this finding unless it is required to make the fix safe and correct.`;
 }
 
 function Metric({
@@ -563,10 +626,14 @@ function IssuesPanel({
   report,
   selectedIssue,
   onSelect,
+  copiedPrompt,
+  onCopyPrompt,
 }: {
   report: Report;
   selectedIssue: Issue | null;
   onSelect: (issue: Issue | null) => void;
+  copiedPrompt: boolean;
+  onCopyPrompt: (issue: Issue) => void;
 }) {
   if (selectedIssue) {
     return (
@@ -624,6 +691,32 @@ function IssuesPanel({
                 <li key={index}>{step}</li>
               ))}
             </ol>
+          </div>
+
+          <div className="cqa-ai-fix-panel">
+            <div className="cqa-ai-fix-head">
+              <div>
+                <div className="cqa-ai-fix-title">
+                  <Sparkles size={16} />
+                  <strong>Developer Fix Prompt</strong>
+                </div>
+                <p>
+                  Copy this prompt into GitHub Copilot, ChatGPT, or another coding assistant.
+                  It tells the assistant to fix the finding without silently changing existing behavior.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className={`cqa-copy-prompt ${copiedPrompt ? "copied" : ""}`}
+                onClick={() => onCopyPrompt(selectedIssue)}
+              >
+                {copiedPrompt ? <Check size={14} /> : <Clipboard size={14} />}
+                {copiedPrompt ? "Copied" : "Copy prompt"}
+              </button>
+            </div>
+
+            <pre className="cqa-ai-fix-prompt">{buildFixPrompt(selectedIssue, report)}</pre>
           </div>
         </div>
 
