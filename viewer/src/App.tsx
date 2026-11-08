@@ -21,6 +21,7 @@ import DeadCodeAnalyzer from "./modules/deadCode/DeadCodeAnalyzer";
 import AnalyzeApiEndpoints from "./modules/apiExplorer/AnalyzeApiEndpoints";
 import AnalyzeSecurity from "./modules/security/AnalyzeSecurity";
 import AnalyzeTestCoverage from "./modules/testCoverage/AnalyzeTestCoverage";
+import AnalyzeDependencyHealth from "./modules/dependenciesHealth/AnalyzeDependencyHealth";
 
 
 const defaultProjectPath =
@@ -203,7 +204,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth";
   label: string;
   icon: string;
 };
@@ -215,7 +216,8 @@ const developerTools: DeveloperTool[] = [
   { value: "deadCode", label: "Dead Code", icon: "◌" },
   { value: "apiExplorer", label: "API Explorer", icon: "⇄" },
   { value: "security", label: "Security", icon: "🔒" },
-  { value: "testCoverage", label: "Test Coverage", icon: "🧪" }
+  { value: "testCoverage", label: "Test Coverage", icon: "🧪" },
+  { value: "dependencyHealth", label: "Dependency Health", icon: "📦" }
 ];
 
 function DeveloperToolsSelect({
@@ -479,7 +481,8 @@ export default function App() {
       "deadCode" |
       "apiExplorer" |
       "security" |
-      "testCoverage"
+      "testCoverage" |
+      "dependencyHealth"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -878,7 +881,8 @@ export default function App() {
                 activeView === "deadCode" ||
                 activeView === "apiExplorer" ||
                 activeView === "security" ||
-                activeView === "testCoverage"
+                activeView === "testCoverage" ||
+                activeView === "dependencyHealth"
                 ? activeView
                 : null
             }
@@ -1162,6 +1166,13 @@ export default function App() {
 
         {activeView === "testCoverage" && (
           <AnalyzeTestCoverage
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "dependencyHealth" && (
+          <AnalyzeDependencyHealth
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />

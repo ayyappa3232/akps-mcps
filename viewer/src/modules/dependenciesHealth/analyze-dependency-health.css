@@ -1,0 +1,907 @@
+/* Dependency Health Analyzer */
+
+.dependency-health-analyzer {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  color: #e8edf8;
+}
+
+.dependency-health-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 8px 0 20px;
+}
+
+.dependency-health-title-icon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(129, 120, 255, 0.38);
+  border-radius: 14px;
+  color: #9d95ff;
+  background: rgba(77, 66, 178, 0.18);
+}
+
+.dependency-health-title-row h1 {
+  margin: 0;
+  font-size: 27px;
+  line-height: 1.2;
+  font-weight: 750;
+}
+
+.dependency-health-title-row p {
+  max-width: 900px;
+  margin: 8px 0 0;
+  color: #94a1ba;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.dependency-health-input-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: end;
+  padding: 18px;
+  border: 1px solid rgba(84, 108, 149, 0.35);
+  border-radius: 16px;
+  background: rgba(12, 18, 32, 0.64);
+}
+
+.dependency-health-field {
+  min-width: 0;
+}
+
+.dependency-health-field label {
+  display: block;
+  margin-bottom: 8px;
+  color: #c8d1e3;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.dependency-health-field input {
+  width: 100%;
+  min-height: 43px;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid #30476b;
+  border-radius: 10px;
+  outline: none;
+  color: #e9eef8;
+  background: #0b1221;
+  font-size: 13px;
+}
+
+.dependency-health-field input::placeholder {
+  color: #596780;
+}
+
+.dependency-health-field input:focus {
+  border-color: #7167f4;
+  box-shadow: 0 0 0 3px rgba(113, 103, 244, 0.12);
+}
+
+.dependency-health-analyze-button {
+  min-height: 43px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 10px;
+  color: white;
+  background: linear-gradient(135deg, #766bf5, #6256e7);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dependency-health-analyze-button:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.dependency-health-analyze-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.dependency-health-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: dependency-health-spin 0.8s linear infinite;
+}
+
+@keyframes dependency-health-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dependency-health-error {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 14px;
+  border: 1px solid rgba(241, 101, 126, 0.4);
+  border-radius: 11px;
+  color: #ffb1bd;
+  background: rgba(126, 35, 55, 0.18);
+  font-size: 13px;
+}
+
+.dependency-health-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.dependency-health-success {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #9ee4bd;
+  font-size: 13px;
+}
+
+.dependency-health-success svg {
+  color: #63d894;
+}
+
+.dependency-health-success strong {
+  color: #dcefe5;
+}
+
+.dependency-health-status-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #71809a;
+  font-size: 12px;
+}
+
+.dependency-health-status-meta span {
+  padding: 5px 9px;
+  border: 1px solid rgba(76, 94, 128, 0.4);
+  border-radius: 999px;
+  background: rgba(17, 24, 40, 0.65);
+}
+
+.dependency-health-summary-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dependency-health-summary-card {
+  min-height: 94px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  border: 1px solid rgba(77, 93, 125, 0.35);
+  border-radius: 14px;
+  background: #111625;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dependency-health-summary-card:hover,
+.dependency-health-summary-card.is-active {
+  border-color: rgba(127, 116, 245, 0.58);
+}
+
+.dependency-health-summary-card.is-active {
+  background: rgba(91, 78, 213, 0.1);
+}
+
+.dependency-health-summary-icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: #9d95ff;
+  background: rgba(91, 78, 213, 0.16);
+}
+
+.dependency-health-summary-card.is-missing .dependency-health-summary-icon {
+  color: #ff9ba9;
+  background: rgba(180, 52, 76, 0.16);
+}
+
+.dependency-health-summary-card.is-duplicate .dependency-health-summary-icon {
+  color: #83baff;
+  background: rgba(57, 104, 170, 0.16);
+}
+
+.dependency-health-summary-card.is-outdated .dependency-health-summary-icon {
+  color: #e9c879;
+  background: rgba(174, 128, 43, 0.16);
+}
+
+.dependency-health-summary-card strong {
+  display: block;
+  color: #edf2fa;
+  font-size: 25px;
+}
+
+.dependency-health-summary-card span {
+  display: block;
+  margin-top: 6px;
+  color: #7d899f;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.dependency-health-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dependency-health-metrics > div {
+  padding: 12px 14px;
+  border: 1px solid rgba(75, 92, 126, 0.3);
+  border-radius: 12px;
+  background: rgba(13, 19, 34, 0.72);
+}
+
+.dependency-health-metrics span {
+  display: block;
+  color: #6f7d96;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.dependency-health-metrics strong {
+  display: block;
+  margin-top: 5px;
+  color: #e6ecf7;
+  font-size: 19px;
+}
+
+.dependency-health-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(350px, 0.82fr);
+  gap: 16px;
+  height: clamp(520px, calc(100vh - 120px), 820px);
+}
+
+.dependency-health-findings-panel,
+.dependency-health-inventory-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(75, 92, 126, 0.35);
+  border-radius: 16px;
+  background: #0d1322;
+}
+
+.dependency-health-panel-header {
+  flex: 0 0 auto;
+  min-height: 78px;
+  padding: 18px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid rgba(66, 80, 108, 0.3);
+}
+
+.dependency-health-panel-header h2 {
+  margin: 0;
+  color: #e5eaf4;
+  font-size: 17px;
+}
+
+.dependency-health-panel-header p {
+  margin: 5px 0 0;
+  color: #69758d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dependency-health-count {
+  min-width: 42px;
+  height: 31px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(116, 104, 240, 0.4);
+  border-radius: 999px;
+  color: #b4adff;
+  background: rgba(91, 78, 213, 0.12);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dependency-health-filters {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px 170px;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid rgba(66, 80, 108, 0.3);
+}
+
+.dependency-health-search {
+  min-height: 39px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid #293b5a;
+  border-radius: 9px;
+  background: #0a101d;
+}
+
+.dependency-health-search svg {
+  flex: 0 0 auto;
+  color: #697893;
+}
+
+.dependency-health-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: none;
+  color: #e5eaf4;
+  background: transparent;
+  font-size: 13px;
+}
+
+.dependency-health-filters select {
+  min-height: 39px;
+  padding: 0 10px;
+  border: 1px solid #293b5a;
+  border-radius: 9px;
+  outline: none;
+  color: #dce5f2;
+  background: #0e1728;
+  font-size: 12px;
+}
+
+.dependency-health-list,
+.dependency-health-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dependency-health-show-more {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 12px;
+  padding: 10px;
+  border: 1px solid rgba(116, 104, 240, 0.35);
+  border-radius: 9px;
+  color: #b4adff;
+  background: rgba(91, 78, 213, 0.1);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.dependency-health-show-more:hover {
+  background: rgba(91, 78, 213, 0.18);
+}
+
+.dependency-health-finding {
+  border-bottom: 1px solid rgba(62, 76, 104, 0.25);
+}
+
+.dependency-health-finding-toggle {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dependency-health-finding-toggle:focus-visible {
+  outline: 2px solid #7167f4;
+  outline-offset: -2px;
+}
+
+.dependency-health-finding:hover,
+.dependency-health-finding.is-expanded {
+  background: rgba(117, 108, 244, 0.055);
+}
+
+.dependency-health-finding-main {
+  min-width: 0;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 24px;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.dependency-health-severity {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+}
+
+.dependency-health-severity.critical,
+.dependency-health-severity.high {
+  color: #ff9eab;
+  background: rgba(168, 48, 70, 0.16);
+}
+
+.dependency-health-severity.medium {
+  color: #e9c879;
+  background: rgba(174, 128, 43, 0.16);
+}
+
+.dependency-health-severity.low,
+.dependency-health-severity.info {
+  color: #9e95ff;
+  background: rgba(91, 78, 213, 0.15);
+}
+
+.dependency-health-finding-copy {
+  min-width: 0;
+}
+
+.dependency-health-finding-topline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.dependency-health-finding-topline strong {
+  color: #edf2fa;
+  font-size: 13px;
+}
+
+.dependency-health-badge,
+.dependency-health-category {
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.dependency-health-badge {
+  border: 1px solid rgba(113, 103, 244, 0.32);
+  color: #bcb6ff;
+  background: rgba(91, 78, 213, 0.1);
+}
+
+.dependency-health-badge.high,
+.dependency-health-badge.critical {
+  color: #ffabb7;
+  border-color: rgba(241, 101, 126, 0.32);
+  background: rgba(126, 35, 55, 0.12);
+}
+
+.dependency-health-badge.medium {
+  color: #e6c779;
+  border-color: rgba(210, 163, 65, 0.32);
+  background: rgba(126, 94, 28, 0.12);
+}
+
+.dependency-health-category {
+  color: #8090aa;
+  background: rgba(91, 108, 139, 0.12);
+}
+
+.dependency-health-finding h3 {
+  margin: 8px 0 4px;
+  color: #dce5f2;
+  font-size: 13px;
+}
+
+.dependency-health-finding p {
+  margin: 0;
+  color: #7f8da5;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.dependency-health-file {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #697b9b;
+  font-size: 11px;
+}
+
+.dependency-health-chevron {
+  color: #62728e;
+}
+
+.dependency-health-detail {
+  margin: 0 16px 16px 58px;
+  padding: 14px;
+  border: 1px solid rgba(80, 97, 130, 0.3);
+  border-radius: 11px;
+  background: rgba(8, 14, 25, 0.72);
+}
+
+.dependency-health-detail span,
+.dependency-health-detail-grid span {
+  display: block;
+  color: #6f7d96;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.dependency-health-detail p {
+  margin: 5px 0 0;
+  color: #aeb9ca;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.dependency-health-detail-grid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dependency-health-detail-grid > div {
+  padding: 9px;
+  border: 1px solid rgba(69, 85, 116, 0.3);
+  border-radius: 8px;
+  background: rgba(17, 25, 42, 0.7);
+}
+
+.dependency-health-detail-grid strong {
+  display: block;
+  margin-top: 4px;
+  color: #dbe4f2;
+  font-size: 11px;
+  word-break: break-word;
+}
+
+.dependency-health-empty {
+  min-height: 260px;
+  padding: 30px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: #7f8da5;
+  text-align: center;
+}
+
+.dependency-health-empty svg {
+  color: #63d894;
+}
+
+.dependency-health-empty strong {
+  color: #dbe6f3;
+  font-size: 14px;
+}
+
+.dependency-health-empty span {
+  max-width: 420px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.dependency-health-inventory {
+  overflow: visible;
+}
+
+.dependency-health-inventory-item {
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(62, 76, 104, 0.22);
+}
+
+.dependency-health-inventory-item > div {
+  min-width: 0;
+}
+
+.dependency-health-inventory-item strong {
+  display: block;
+  color: #dce5f2;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.dependency-health-inventory-item span {
+  display: block;
+  margin-top: 4px;
+  color: #697891;
+  font-size: 10px;
+}
+
+.dependency-health-inventory-item code {
+  flex: 0 0 auto;
+  color: #9e95ff;
+  font-size: 10px;
+}
+
+.dependency-health-duplicates,
+.dependency-health-warnings {
+  padding: 14px;
+  border-top: 1px solid rgba(66, 80, 108, 0.3);
+}
+
+.dependency-health-subheading {
+  margin-bottom: 9px;
+  color: #cbd5e4;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.dependency-health-duplicate {
+  padding: 9px 10px;
+  margin-bottom: 7px;
+  border: 1px solid rgba(210, 163, 65, 0.2);
+  border-radius: 8px;
+  background: rgba(126, 94, 28, 0.08);
+}
+
+.dependency-health-duplicate strong {
+  display: block;
+  color: #dfe7f3;
+  font-size: 11px;
+}
+
+.dependency-health-duplicate span {
+  display: block;
+  margin-top: 3px;
+  color: #9c8b62;
+  font-size: 10px;
+}
+
+.dependency-health-warning {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+  color: #a9b5c8;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.dependency-health-warning svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #e0bd6a;
+}
+
+@media (max-width: 1050px) {
+  .dependency-health-workspace {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .dependency-health-findings-panel {
+    height: 620px;
+  }
+
+  .dependency-health-inventory-panel {
+    height: 460px;
+  }
+}
+
+@media (max-width: 820px) {
+  .dependency-health-input-card {
+    grid-template-columns: 1fr;
+  }
+
+  .dependency-health-summary-grid,
+  .dependency-health-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dependency-health-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .dependency-health-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .dependency-health-analyzer {
+    padding: 14px;
+  }
+
+  .dependency-health-title-row {
+    gap: 12px;
+  }
+
+  .dependency-health-title-icon {
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
+  }
+
+  .dependency-health-title-row h1 {
+    font-size: 22px;
+  }
+
+  .dependency-health-summary-grid,
+  .dependency-health-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .dependency-health-status-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* Custom select (matches SecuritySelect.tsx) */
+
+.security-select {
+  position: relative;
+  min-width: 0;
+}
+
+.security-select-trigger {
+  width: 100%;
+  min-height: 39px;
+  padding: 0 10px 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #293b5a;
+  border-radius: 9px;
+  outline: none;
+  color: #dce5f2;
+  background: #0e1728;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.security-select-trigger:hover {
+  border-color: #3a5282;
+}
+
+.security-select-trigger:focus-visible,
+.security-select-trigger[aria-expanded="true"] {
+  border-color: #7167f4;
+  box-shadow: 0 0 0 3px rgba(113, 103, 244, 0.12);
+}
+
+.security-select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.security-select-chevron {
+  flex: 0 0 auto;
+  color: #697893;
+  transition: transform 0.15s;
+}
+
+.security-select-trigger[aria-expanded="true"] .security-select-chevron {
+  transform: rotate(180deg);
+  color: #b4adff;
+}
+
+.security-select-menu {
+  position: fixed;
+  z-index: 10000;
+  box-sizing: border-box;
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid rgba(84, 108, 149, 0.5);
+  border-radius: 12px;
+  color: #dce5f2;
+  background: #0f1729;
+  box-shadow: 0 18px 40px rgba(2, 6, 16, 0.6), 0 0 0 1px rgba(2, 6, 16, 0.4);
+  scrollbar-width: thin;
+  scrollbar-color: #2b3a58 transparent;
+}
+
+.security-select-option {
+  min-height: 32px;
+  padding: 0 10px 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  color: #c3cde0;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.security-select-option[data-active="true"] {
+  color: #edf2fa;
+  background: rgba(117, 108, 244, 0.16);
+}
+
+.security-select-option[aria-selected="true"] {
+  color: #fff;
+  font-weight: 650;
+}
+
+.security-select-check {
+  width: 16px;
+  flex: 0 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9d95ff;
+}
+
+.security-select-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.security-select-count {
+  flex: 0 0 auto;
+  min-width: 22px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #8090aa;
+  background: rgba(91, 108, 139, 0.16);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.security-select-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+}
+
+.security-dot-critical { background: #ff5d73; }
+.security-dot-high { background: #ff9eab; }
+.security-dot-medium { background: #e9c879; }
+.security-dot-low { background: #9e95ff; }
+.security-dot-info { background: #6f8fbf; }

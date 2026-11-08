@@ -16,6 +16,7 @@ import {
 } from "./tools/analyzeApiEndpoints.js";
 import { analyzeSecurity } from "./tools/analyzeSecurity.js";
 import { analyzeTestCoverage } from "./tools/analyzeTestCoverage.js";
+import { analyzeDependencyHealth } from "./tools/analyzeDependencyHealth.js";
 
 const app = express();
 const PORT = 4174;
@@ -758,6 +759,43 @@ app.post("/api/analyze-test-coverage", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to analyze test coverage.",
+    });
+  }
+});
+
+app.post("/api/analyze-dependency-health", async (req, res) => {
+  try {
+    let { projectPath } = req.body ?? {};
+
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+
+    const report = await analyzeDependencyHealth(projectPath);
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "analyze_dependency_health",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze dependency health.",
     });
   }
 });
