@@ -23,6 +23,26 @@ export interface ResolvedProject {
   cached: boolean;
 }
 
+/**
+ * True when the path is inside the resolver's clone cache. Callers that receive
+ * an already-resolved local path use this to tell a temporary clone (safe to
+ * install dependencies and run tests in) from the user's own project.
+ */
+export function isManagedRepositoryPath(candidate: string): boolean {
+  const real = (value: string) => {
+    try {
+      return fs.realpathSync(value);
+    } catch {
+      return path.resolve(value);
+    }
+  };
+
+  const root = real(CACHE_ROOT);
+  const target = real(candidate);
+
+  return target === root || target.startsWith(root + path.sep);
+}
+
 function isGitHubUrl(value: string): boolean {
   try {
     const url = new URL(value);

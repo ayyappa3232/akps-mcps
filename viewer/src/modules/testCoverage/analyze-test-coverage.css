@@ -201,6 +201,14 @@
   color: #63d894;
 }
 
+.test-coverage-success.is-empty {
+  color: #e6c77d;
+}
+
+.test-coverage-success.is-empty svg {
+  color: #dcaa43;
+}
+
 .test-coverage-success strong {
   color: #dcefe5;
 }
@@ -541,6 +549,97 @@
 
 .test-coverage-low strong {
   color: #ff9eaf;
+}
+
+.test-coverage-unavailable {
+  margin: 14px;
+  padding: 16px;
+
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+
+  border: 1px dashed rgba(184, 126, 45, 0.45);
+  border-radius: 12px;
+
+  background: rgba(136, 92, 22, 0.07);
+}
+
+.test-coverage-unavailable-icon {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 10px;
+
+  color: #d8b56d;
+  background: rgba(184, 126, 45, 0.14);
+}
+
+.test-coverage-unavailable-body {
+  min-width: 0;
+}
+
+.test-coverage-unavailable-body h3 {
+  margin: 0 0 6px;
+
+  color: #e6c77d;
+  font-size: 14px;
+}
+
+.test-coverage-unavailable-body p {
+  margin: 0 0 12px;
+
+  color: #8995ad;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.test-coverage-unavailable-body ol {
+  margin: 0;
+  padding-left: 18px;
+
+  color: #a4afc6;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.test-coverage-unavailable-body code {
+  padding: 1px 6px;
+
+  border-radius: 6px;
+
+  color: #c9c2ff;
+  background: rgba(98, 78, 204, 0.16);
+
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.test-coverage-estimate-note {
+  margin: 10px 0 0;
+
+  color: #66738c;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.test-coverage-tag-warn {
+  margin-left: 8px;
+  padding: 2px 7px;
+
+  border: 1px solid rgba(184, 126, 45, 0.4);
+  border-radius: 999px;
+
+  color: #d8b56d;
+  background: rgba(136, 92, 22, 0.1);
+
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
 }
 
 .test-coverage-frameworks {

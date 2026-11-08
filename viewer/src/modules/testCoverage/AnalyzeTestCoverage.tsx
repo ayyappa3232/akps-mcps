@@ -5,9 +5,26 @@ import {
   CheckCircle2,
   FileCode2,
   FlaskConical,
+  Info,
   Search,
 } from "lucide-react";
 import "./analyze-test-coverage.css";
+
+type CoverageStatus = {
+  available: boolean;
+  source: "existing-report" | "generated" | "none";
+  reportPath?: string;
+  reason?:
+    | "no-test-framework"
+    | "no-active-tests"
+    | "no-coverage-report"
+    | "generation-failed"
+    | "unsupported-runner"
+    | "unreadable-report";
+  title?: string;
+  message?: string;
+  suggestions: string[];
+};
 
 type TestCoverageReport = {
   success: boolean;
@@ -31,6 +48,8 @@ type TestCoverageReport = {
     matchingSourceFiles: string[];
   }[];
   untestedSourceFiles: string[];
+  coverageStatus?: CoverageStatus;
+  scope?: "project" | "file";
   warnings: string[];
 };
 
@@ -41,6 +60,13 @@ interface AnalyzeTestCoverageProps {
 
 function formatPercentage(value?: number): string {
   return value === undefined ? "—" : `${value}%`;
+}
+
+// Renders `code` segments (backticks) from backend messages as <code>.
+function renderInlineCode(text: string): ReactNode {
+  return text.split("`").map((part, index) =>
+    index % 2 === 1 ? <code key={index}>{part}</code> : part,
+  );
 }
 
 function getCoverageTone(value?: number): string {
@@ -119,6 +145,12 @@ export default function AnalyzeTestCoverage({
     );
   }, [report, search]);
 
+  // Older backends don't send coverageStatus: fall back to "any value present".
+  const coverageAvailable = report
+    ? (report.coverageStatus?.available ??
+      Object.values(report.coverage).some((value) => value !== undefined))
+    : false;
+
   const totalLinkedSourceFiles = report?.sourceFilesWithTests ?? 0;
   const testRelationshipPercentage =
     report && report.totalSourceFiles > 0
@@ -196,14 +228,28 @@ export default function AnalyzeTestCoverage({
       {report && (
         <>
           <div className="test-coverage-status-row">
-            <div className="test-coverage-success">
-              <CheckCircle2 size={18} />
+            <div
+              className={`test-coverage-success${
+                report.totalTests === 0 ? " is-empty" : ""
+              }`}
+            >
+              {report.totalTests === 0 ? (
+                <AlertTriangle size={18} />
+              ) : (
+                <CheckCircle2 size={18} />
+              )}
               <strong>{report.totalTests}</strong>
-              <span>tests discovered</span>
+              <span>
+                {report.totalTests === 0
+                  ? "active tests discovered"
+                  : "tests discovered"}
+              </span>
             </div>
 
             <span className="test-coverage-scope">
-              Project-wide analysis
+              {report.scope === "file"
+                ? "Single-file analysis"
+                : "Project-wide analysis"}
             </span>
           </div>
 
@@ -295,29 +341,39 @@ export default function AnalyzeTestCoverage({
                 <div>
                   <h2>Coverage Overview</h2>
                   <p>
-                    Values come from supported project coverage reports.
+                    {coverageAvailable && report.coverageStatus?.reportPath
+                      ? `Values read from ${report.coverageStatus.reportPath}${
+                          report.coverageStatus.source === "generated"
+                            ? " (generated during analysis)."
+                            : "."
+                        }`
+                      : "Values come from supported project coverage reports."}
                   </p>
                 </div>
               </div>
 
-              <div className="test-coverage-metrics">
-                <CoverageMetric
-                  label="Lines"
-                  value={report.coverage.line}
-                />
-                <CoverageMetric
-                  label="Statements"
-                  value={report.coverage.statement}
-                />
-                <CoverageMetric
-                  label="Branches"
-                  value={report.coverage.branch}
-                />
-                <CoverageMetric
-                  label="Functions"
-                  value={report.coverage.function}
-                />
-              </div>
+              {coverageAvailable ? (
+                <div className="test-coverage-metrics">
+                  <CoverageMetric
+                    label="Lines"
+                    value={report.coverage.line}
+                  />
+                  <CoverageMetric
+                    label="Statements"
+                    value={report.coverage.statement}
+                  />
+                  <CoverageMetric
+                    label="Branches"
+                    value={report.coverage.branch}
+                  />
+                  <CoverageMetric
+                    label="Functions"
+                    value={report.coverage.function}
+                  />
+                </div>
+              ) : (
+                <CoverageUnavailable status={report.coverageStatus} />
+              )}
 
               <div className="test-coverage-frameworks">
                 <div className="test-coverage-section-label">
@@ -344,7 +400,9 @@ export default function AnalyzeTestCoverage({
 
               <div className="test-coverage-relationship">
                 <div className="test-coverage-section-label">
-                  Test relationship
+                  {coverageAvailable
+                    ? "Test relationship"
+                    : "Test relationship (estimate)"}
                 </div>
 
                 <div className="test-coverage-relationship-bar">
@@ -369,6 +427,14 @@ export default function AnalyzeTestCoverage({
                     of source files linked to at least one test
                   </span>
                 </div>
+
+                {!coverageAvailable && (
+                  <p className="test-coverage-estimate-note">
+                    Static estimate from test file names and imports. It
+                    shows which files have tests, not how much of their
+                    code is executed.
+                  </p>
+                )}
               </div>
             </aside>
           </div>
@@ -413,6 +479,11 @@ export default function AnalyzeTestCoverage({
                         {testFile.testCount} tests ·{" "}
                         {testFile.matchingSourceFiles.length} linked
                         source files
+                        {testFile.testCount === 0 && (
+                          <em className="test-coverage-tag-warn">
+                            No active tests
+                          </em>
+                        )}
                       </span>
                     </div>
                   </div>
@@ -478,6 +549,38 @@ function CoverageMetric({
       </div>
 
       <strong>{formatPercentage(value)}</strong>
+    </div>
+  );
+}
+
+function CoverageUnavailable({ status }: { status?: CoverageStatus }) {
+  const title = status?.title ?? "No coverage report available";
+  const message =
+    status?.message ??
+    "No coverage report was found for this project, so percentages cannot be shown.";
+  const suggestions = status?.suggestions ?? [];
+
+  return (
+    <div className="test-coverage-unavailable" role="status">
+      <div className="test-coverage-unavailable-icon">
+        <Info size={20} />
+      </div>
+
+      <div className="test-coverage-unavailable-body">
+        <h3>{title}</h3>
+        <p>{message}</p>
+
+        {suggestions.length > 0 && (
+          <>
+            <div className="test-coverage-section-label">How to fix</div>
+            <ol>
+              {suggestions.map((suggestion) => (
+                <li key={suggestion}>{renderInlineCode(suggestion)}</li>
+              ))}
+            </ol>
+          </>
+        )}
+      </div>
     </div>
   );
 }
