@@ -1,0 +1,1291 @@
+/* =========================================================
+   API / Backend Communication Explorer
+   ========================================================= */
+
+.api-explorer {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  color: #e8e9f3;
+}
+
+
+/* =========================================================
+   Header
+   ========================================================= */
+
+.api-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.api-heading h2 {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.25;
+  font-weight: 700;
+  color: #f3f4fa;
+}
+
+.api-heading p {
+  max-width: 820px;
+  margin: 7px 0 0;
+  color: #9699ad;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.api-ready {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid rgba(129, 120, 255, 0.25);
+  border-radius: 999px;
+  background: rgba(129, 120, 255, 0.08);
+  color: #bcb9ff;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+
+/* =========================================================
+   How to use
+   ========================================================= */
+
+.api-howto {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid rgba(129, 120, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(94, 82, 170, 0.06);
+  color: #a6a8ba;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.api-howto svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #918aff;
+}
+
+.api-howto strong {
+  color: #d8d9e5;
+  font-weight: 600;
+}
+
+
+/* =========================================================
+   Controls
+   ========================================================= */
+
+.api-controls {
+  display: grid;
+  grid-template-columns:
+    minmax(260px, 1.15fr)
+    minmax(220px, 0.85fr)
+    auto;
+  align-items: end;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  background: rgba(18, 18, 31, 0.72);
+}
+
+.api-controls label {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.api-controls label > span {
+  color: #d8d9e5;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.api-controls label small {
+  min-height: 15px;
+  color: #777b91;
+  font-size: 10px;
+}
+
+.api-controls input {
+  width: 100%;
+  min-width: 0;
+  height: 37px;
+  padding: 0 11px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  outline: none;
+  background: rgba(7, 7, 15, 0.72);
+  color: #dfe1ec;
+  font-family: inherit;
+  font-size: 11px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.api-controls input::placeholder {
+  color: #55596c;
+}
+
+.api-controls input:focus {
+  border-color: rgba(129, 120, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(129, 120, 255, 0.08);
+}
+
+.api-primary {
+  height: 37px;
+  padding: 0 16px;
+  border: 1px solid rgba(143, 135, 255, 0.5);
+  border-radius: 8px;
+  background: linear-gradient(
+    180deg,
+    rgba(112, 103, 245, 0.95),
+    rgba(88, 79, 206, 0.95)
+  );
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.api-primary:hover:not(:disabled) {
+  box-shadow: 0 7px 24px rgba(91, 82, 220, 0.25);
+  transform: translateY(-1px);
+}
+
+.api-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.api-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+
+/* =========================================================
+   Messages
+   ========================================================= */
+
+.api-message {
+  padding: 11px 13px;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.api-message.error {
+  border: 1px solid rgba(255, 95, 117, 0.25);
+  background: rgba(255, 76, 102, 0.08);
+  color: #f0a5b1;
+}
+
+.api-message strong {
+  color: #ffb6c0;
+}
+
+
+/* =========================================================
+   Analysis status
+   ========================================================= */
+
+.api-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+}
+
+.api-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #a9e4bd;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.api-status-pill svg {
+  color: #69d98d;
+}
+
+.api-target-line {
+  max-width: 70%;
+  overflow: hidden;
+  color: #707489;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* =========================================================
+   Summary cards
+   ========================================================= */
+
+.api-stats {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(100px, 1fr));
+  gap: 9px;
+}
+
+.api-stat {
+  min-width: 0;
+  min-height: 70px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  background: rgba(17, 17, 29, 0.8);
+}
+
+.api-stat-icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.api-stat-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.api-stat-text strong {
+  color: #f2f3f9;
+  font-size: 17px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.api-stat-text small {
+  overflow: hidden;
+  color: #777b91;
+  font-size: 9px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* =========================================================
+   Summary card variants
+   ========================================================= */
+
+.api-stat-blue .api-stat-icon {
+  background: rgba(73, 133, 255, 0.11);
+  color: #75a7ff;
+}
+
+.api-stat-green .api-stat-icon {
+  background: rgba(69, 206, 127, 0.1);
+  color: #71df9a;
+}
+
+.api-stat-orange .api-stat-icon {
+  background: rgba(255, 169, 82, 0.1);
+  color: #ffb46f;
+}
+
+.api-stat-purple .api-stat-icon {
+  background: rgba(141, 120, 255, 0.12);
+  color: #aa9cff;
+}
+
+.api-stat-red .api-stat-icon {
+  background: rgba(255, 86, 111, 0.1);
+  color: #ff8d9f;
+}
+
+
+/* =========================================================
+   Main workspace
+   ========================================================= */
+
+.api-workspace {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.75fr);
+  gap: 12px;
+}
+
+
+/* =========================================================
+   Panels
+   ========================================================= */
+
+.api-list-panel,
+.api-inspector {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  background: rgba(15, 15, 27, 0.78);
+}
+
+.api-list-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.api-inspector {
+  display: flex;
+  flex-direction: column;
+}
+
+
+/* =========================================================
+   Panel toolbar
+   ========================================================= */
+
+.api-panel-toolbar {
+  min-height: 58px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.api-panel-toolbar h3 {
+  margin: 0;
+  color: #e8e9f3;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.api-panel-toolbar p {
+  margin: 3px 0 0;
+  color: #6f7388;
+  font-size: 10px;
+}
+
+.api-toolbar-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(129, 120, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(129, 120, 255, 0.07);
+  color: #9e99e9;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+
+/* =========================================================
+   Filter bar
+   ========================================================= */
+
+.api-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 145px 130px;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  background: rgba(8, 8, 16, 0.25);
+}
+
+.api-filter-bar > label {
+  min-width: 0;
+}
+
+.api-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.api-search svg {
+  position: absolute;
+  left: 10px;
+  color: #666a80;
+  pointer-events: none;
+}
+
+.api-search input {
+  width: 100%;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 10px 0 31px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 7px;
+  outline: none;
+  background: rgba(7, 7, 15, 0.62);
+  color: #dfe1ec;
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.api-search input::placeholder {
+  color: #55596b;
+}
+
+.api-search input:focus {
+  border-color: rgba(129, 120, 255, 0.4);
+}
+
+.api-filter-bar select {
+  width: 100%;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 7px;
+  outline: none;
+  background: rgba(7, 7, 15, 0.62);
+  color: #bfc1d0;
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.api-filter-bar select:focus {
+  border-color: rgba(129, 120, 255, 0.4);
+}
+
+
+/* =========================================================
+   Operations list
+   ========================================================= */
+
+.api-list {
+  min-height: 0;
+  max-height: 620px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 120, 255, 0.4) transparent;
+}
+
+.api-list::-webkit-scrollbar {
+  width: 7px;
+}
+
+.api-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.api-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(129, 120, 255, 0.38);
+}
+
+.api-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(129, 120, 255, 0.62);
+}
+
+
+/* =========================================================
+   Operation row
+   ========================================================= */
+
+.api-row {
+  width: 100%;
+  min-width: 0;
+  min-height: 62px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.api-row:hover {
+  background: rgba(129, 120, 255, 0.045);
+}
+
+.api-row.selected {
+  background: rgba(129, 120, 255, 0.09);
+  box-shadow: inset 2px 0 0 #837bff;
+}
+
+.api-row-icon {
+  width: 29px;
+  height: 29px;
+  flex: 0 0 29px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+}
+
+.api-row-icon.http {
+  background: rgba(90, 145, 255, 0.1);
+  color: #78a7ff;
+}
+
+.api-row-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.api-row-top {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.api-row-top strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #dfe1eb;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.api-row-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: #676b80;
+  font-size: 9px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* =========================================================
+   HTTP method badges
+   ========================================================= */
+
+.api-method,
+.api-category {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 19px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.api-method-get {
+  background: rgba(74, 145, 255, 0.11);
+  color: #78a8ff;
+}
+
+.api-method-post {
+  background: rgba(64, 205, 126, 0.11);
+  color: #6cdb97;
+}
+
+.api-method-put {
+  background: rgba(255, 172, 80, 0.11);
+  color: #ffb66f;
+}
+
+.api-method-patch {
+  background: rgba(166, 121, 255, 0.12);
+  color: #b998ff;
+}
+
+.api-method-delete {
+  background: rgba(255, 79, 107, 0.11);
+  color: #ff899b;
+}
+
+.api-method-other {
+  background: rgba(160, 165, 181, 0.09);
+  color: #a9adbe;
+}
+
+
+/* =========================================================
+   Category badges
+   ========================================================= */
+
+.api-category-firestore {
+  background: rgba(255, 178, 77, 0.1);
+  color: #ffbc79;
+}
+
+.api-category-auth {
+  background: rgba(86, 145, 255, 0.11);
+  color: #7ba8ff;
+}
+
+.api-category-storage {
+  background: rgba(70, 207, 137, 0.1);
+  color: #72dfa1;
+}
+
+.api-category-functions {
+  background: rgba(170, 119, 255, 0.11);
+  color: #b993ff;
+}
+
+.api-category-http {
+  background: rgba(86, 145, 255, 0.11);
+  color: #7ba8ff;
+}
+
+
+/* =========================================================
+   Confidence
+   ========================================================= */
+
+.api-confidence {
+  flex: 0 0 auto;
+  min-width: 43px;
+  text-align: right;
+  text-transform: capitalize;
+  font-size: 8px;
+  font-weight: 600;
+}
+
+.api-confidence.high {
+  color: #6edb96;
+}
+
+.api-confidence.medium {
+  color: #e0b56c;
+}
+
+.api-confidence.low {
+  color: #888c9e;
+}
+
+
+/* =========================================================
+   Empty list
+   ========================================================= */
+
+.api-empty {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  color: #666a7e;
+  font-size: 11px;
+  text-align: center;
+}
+
+
+/* =========================================================
+   Inspector
+   ========================================================= */
+
+.api-inspector-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 15px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 120, 255, 0.4) transparent;
+}
+
+.api-inspector-body::-webkit-scrollbar {
+  width: 7px;
+}
+
+.api-inspector-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.api-inspector-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(129, 120, 255, 0.38);
+}
+
+.api-inspector-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(129, 120, 255, 0.62);
+}
+
+
+/* =========================================================
+   Inspector heading
+   ========================================================= */
+
+.api-inspector-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-bottom: 16px;
+}
+
+.api-large-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+}
+
+.api-large-icon.api-category-firestore {
+  background: rgba(255, 178, 77, 0.1);
+  color: #ffbc79;
+}
+
+.api-large-icon.api-category-auth {
+  background: rgba(86, 145, 255, 0.11);
+  color: #7ba8ff;
+}
+
+.api-large-icon.api-category-storage {
+  background: rgba(70, 207, 137, 0.1);
+  color: #72dfa1;
+}
+
+.api-large-icon.api-category-functions {
+  background: rgba(170, 119, 255, 0.11);
+  color: #b993ff;
+}
+
+.api-large-icon.api-category-http {
+  background: rgba(86, 145, 255, 0.11);
+  color: #7ba8ff;
+}
+
+.api-inspector-heading > div {
+  min-width: 0;
+}
+
+.api-inspector-heading h3 {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  color: #e8e9f3;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 700;
+}
+
+
+/* =========================================================
+   Inspector facts
+   ========================================================= */
+
+.api-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 15px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.api-facts > div {
+  min-width: 0;
+  padding: 9px 10px;
+  background: rgba(12, 12, 22, 0.8);
+}
+
+.api-facts span {
+  display: block;
+  margin-bottom: 4px;
+  color: #666a7e;
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.api-facts strong {
+  display: block;
+  overflow: hidden;
+  color: #bfc1d0;
+  font-size: 10px;
+  line-height: 1.4;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* =========================================================
+   Source expression
+   ========================================================= */
+
+.api-expression {
+  margin-bottom: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 9px;
+  background: rgba(7, 7, 14, 0.62);
+  overflow: hidden;
+}
+
+.api-expression-head {
+  min-height: 35px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 9px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.api-expression-head > span {
+  color: #7d8094;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.api-expression-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 5px;
+  background: transparent;
+  color: #8f93a7;
+  font-family: inherit;
+  font-size: 8px;
+  cursor: pointer;
+}
+
+.api-expression-head button:hover {
+  border-color: rgba(129, 120, 255, 0.28);
+  color: #b7b3ff;
+}
+
+.api-expression pre {
+  max-width: 100%;
+  max-height: 190px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 11px;
+  overflow-x: auto;
+  overflow-y: auto;
+  color: #bcbfd0;
+  font-family:
+    "SFMono-Regular",
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    monospace;
+  font-size: 9px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 120, 255, 0.4) transparent;
+}
+
+.api-expression pre::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.api-expression pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.api-expression pre::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(129, 120, 255, 0.38);
+}
+
+
+/* =========================================================
+   Inspector actions
+   ========================================================= */
+
+.api-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.api-actions button {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.025);
+  color: #9b9eaf;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.api-actions button:hover {
+  border-color: rgba(129, 120, 255, 0.25);
+  background: rgba(129, 120, 255, 0.06);
+  color: #b8b4ff;
+}
+
+
+/* =========================================================
+   Inspector empty state
+   ========================================================= */
+
+.api-inspector-empty {
+  min-height: 360px;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 35px;
+  text-align: center;
+}
+
+.api-inspector-empty .api-empty-icon {
+  width: 52px;
+  height: 52px;
+  margin-bottom: 14px;
+}
+
+.api-inspector-empty h3 {
+  margin: 0 0 7px;
+  color: #d9dae6;
+  font-size: 13px;
+}
+
+.api-inspector-empty p {
+  max-width: 280px;
+  margin: 0;
+  color: #6f7388;
+  font-size: 10px;
+  line-height: 1.65;
+}
+
+
+/* =========================================================
+   Empty / initial state
+   ========================================================= */
+
+.api-empty-state {
+  min-height: 330px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  border: 1px dashed rgba(129, 120, 255, 0.15);
+  border-radius: 12px;
+  background: rgba(17, 17, 29, 0.35);
+  text-align: center;
+}
+
+.api-empty-icon {
+  width: 58px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 15px;
+  border: 1px solid rgba(129, 120, 255, 0.18);
+  border-radius: 13px;
+  background: rgba(129, 120, 255, 0.07);
+  color: #8f89ef;
+}
+
+.api-empty-state h3 {
+  margin: 0 0 8px;
+  color: #e1e2ec;
+  font-size: 15px;
+}
+
+.api-empty-state p {
+  max-width: 560px;
+  margin: 0;
+  color: #73778c;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+
+/* =========================================================
+   Warnings
+   ========================================================= */
+
+.api-warnings {
+  padding: 11px 13px;
+  border: 1px solid rgba(255, 190, 91, 0.12);
+  border-radius: 9px;
+  background: rgba(255, 179, 79, 0.035);
+}
+
+.api-warnings > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+  color: #d6ad72;
+  font-size: 10px;
+}
+
+.api-warnings > div svg {
+  color: #d6ad72;
+}
+
+.api-warnings ul {
+  margin: 0;
+  padding-left: 22px;
+  color: #777b8e;
+  font-size: 9px;
+  line-height: 1.65;
+}
+
+.api-warnings li {
+  margin-bottom: 2px;
+}
+
+
+/* =========================================================
+   Scrollbars
+   ========================================================= */
+
+.api-explorer * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 120, 255, 0.32) transparent;
+}
+
+.api-explorer *::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.api-explorer *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.api-explorer *::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(129, 120, 255, 0.32);
+}
+
+.api-explorer *::-webkit-scrollbar-thumb:hover {
+  background: rgba(129, 120, 255, 0.55);
+}
+
+
+/* =========================================================
+   Responsive: medium
+   ========================================================= */
+
+@media (max-width: 1200px) {
+  .api-stats {
+    grid-template-columns: repeat(4, minmax(100px, 1fr));
+  }
+
+  .api-workspace {
+    grid-template-columns:
+      minmax(0, 1.2fr)
+      minmax(300px, 0.8fr);
+  }
+}
+
+
+/* =========================================================
+   Responsive: tablet
+   ========================================================= */
+
+@media (max-width: 980px) {
+  .api-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .api-controls {
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(0, 1fr);
+  }
+
+  .api-primary {
+    width: 100%;
+  }
+
+  .api-stats {
+    grid-template-columns: repeat(3, minmax(100px, 1fr));
+  }
+
+  .api-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .api-inspector {
+    min-height: 500px;
+  }
+
+  .api-list {
+    max-height: 500px;
+  }
+}
+
+
+/* =========================================================
+   Responsive: small tablet
+   ========================================================= */
+
+@media (max-width: 760px) {
+  .api-explorer {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .api-heading h2 {
+    font-size: 18px;
+  }
+
+  .api-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .api-stats {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .api-filter-bar {
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(0, 1fr);
+  }
+
+  .api-search {
+    grid-column: 1 / -1;
+  }
+
+  .api-status {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .api-target-line {
+    max-width: 100%;
+  }
+
+  .api-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .api-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+
+/* =========================================================
+   Responsive: mobile
+   ========================================================= */
+
+@media (max-width: 520px) {
+  .api-explorer {
+    padding: 10px;
+  }
+
+  .api-heading h2 {
+    font-size: 16px;
+  }
+
+  .api-heading p {
+    font-size: 11px;
+  }
+
+  .api-howto {
+    font-size: 10px;
+  }
+
+  .api-stats {
+    grid-template-columns:
+      minmax(0, 1fr);
+  }
+
+  .api-stat {
+    min-height: 58px;
+  }
+
+  .api-filter-bar {
+    grid-template-columns:
+      minmax(0, 1fr);
+  }
+
+  .api-search {
+    grid-column: auto;
+  }
+
+  .api-row {
+    padding: 9px;
+  }
+
+  .api-confidence {
+    display: none;
+  }
+
+  .api-inspector {
+    min-height: 450px;
+  }
+
+  .api-inspector-empty {
+    min-height: 320px;
+  }
+}

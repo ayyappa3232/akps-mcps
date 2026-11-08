@@ -18,6 +18,7 @@ import MethodExplorer from "./modules/methodExplorer/MethodExplorer";
 import AnalyzeChangeImpact from "./modules/changeImpact/AnalyzeChangeImpact";
 import CodeQualityAnalyzer from "./modules/codeQuality/CodeQualityAnalyzer";
 import DeadCodeAnalyzer from "./modules/deadCode/DeadCodeAnalyzer";
+import AnalyzeApiEndpoints from "./modules/apiExplorer/AnalyzeApiEndpoints";
 
 
 const defaultProjectPath =
@@ -199,6 +200,149 @@ function createProgressiveFlowLayout(
   return { nodes, edges: visibleEdges };
 }
 
+type DeveloperTool = {
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer";
+  label: string;
+  icon: string;
+};
+
+const developerTools: DeveloperTool[] = [
+  { value: "method", label: "Method Explorer", icon: "ƒ" },
+  { value: "impact", label: "Change Impact", icon: "↯" },
+  { value: "quality", label: "Code Quality", icon: "◈" },
+  { value: "deadCode", label: "Dead Code", icon: "◌" },
+  { value: "apiExplorer", label: "API Explorer", icon: "⇄" }
+];
+
+function DeveloperToolsSelect({
+  value,
+  onChange
+}: {
+  value: DeveloperTool["value"] | null;
+  onChange: (value: DeveloperTool["value"]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedTool = developerTools.find((tool) => tool.value === value);
+  const filteredTools = developerTools.filter((tool) =>
+    tool.label.toLowerCase().includes(search.trim().toLowerCase())
+  );
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      if (!(event.target instanceof Element) || !rootRef.current?.contains(event.target)) {
+        setOpen(false);
+        setSearch("");
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        setSearch("");
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      window.requestAnimationFrame(() => searchInputRef.current?.focus());
+    }
+  }, [open]);
+
+  function chooseTool(tool: DeveloperTool) {
+    onChange(tool.value);
+    setOpen(false);
+    setSearch("");
+  }
+
+  return (
+    <div
+      className={`developer-tools-select ${open ? "is-open" : ""}`}
+      ref={rootRef}
+    >
+      <button
+        type="button"
+        className={`developer-tools-trigger ${selectedTool ? "has-selection" : ""}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="developer-tools-trigger-content">
+          <span className="developer-tools-trigger-icon">
+            {selectedTool?.icon ?? "⌘"}
+          </span>
+          <span>{selectedTool?.label ?? "Developer Tools"}</span>
+        </span>
+        <span className="developer-tools-chevron" aria-hidden="true" />
+      </button>
+
+      {open && (
+        <div
+          className="developer-tools-menu"
+          role="listbox"
+          aria-label="Developer tools"
+        >
+          <div className="developer-tools-search">
+            <span aria-hidden="true">⌕</span>
+            <input
+              ref={searchInputRef}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search developer tools..."
+              aria-label="Search developer tools"
+            />
+          </div>
+
+          <div className="developer-tools-options">
+            {filteredTools.length > 0 ? (
+              filteredTools.map((tool) => (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={tool.value === value}
+                  key={tool.value}
+                  className={`developer-tools-option ${
+                    tool.value === value ? "is-selected" : ""
+                  }`}
+                  onClick={() => chooseTool(tool)}
+                >
+                  <span className="developer-tools-option-icon">
+                    {tool.icon}
+                  </span>
+                  <span className="developer-tools-option-label">
+                    {tool.label}
+                  </span>
+                  {tool.value === value && (
+                    <span className="developer-tools-check" aria-hidden="true">
+                      ✓
+                    </span>
+                  )}
+                </button>
+              ))
+            ) : (
+              <div className="developer-tools-empty">
+                No developer tools found.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type ThemeSelectOption = {
   value: number;
   label: string;
@@ -329,10 +473,11 @@ export default function App() {
       "method" |
       "impact" |
       "quality" |
-      "deadCode"
+      "deadCode" |
+      "apiExplorer"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
-  const [expandedGraphNodes, setExpandedGraphNodes] = useState<Set<string>>(new Set());
+  const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
 
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([]);
@@ -720,46 +865,18 @@ export default function App() {
             <Network size={15} /> Graph View
           </button>
 
-          <button
-            type="button"
-            className={activeView === "method" ? "active" : ""}
-            onClick={() => setActiveView("method")}
-          >
-            <span className="mx-fglyph">ƒ</span> Method Explorer
-          </button>
-
-          <button
-            type="button"
-            className={activeView === "impact" ? "active" : ""}
-            onClick={() => setActiveView("impact")}
-          >
-            <span className="impact-tab-icon">↯</span> Change Impact
-          </button>
-
-          <button
-            type="button"
-            className={activeView === "quality" ? "active" : ""}
-            onClick={() => setActiveView("quality")}
-          >
-            <span className="impact-tab-icon">◈</span> Code Quality
-          </button>
-
-          <button
-            type="button"
-            className={
-              activeView === "deadCode"
-                ? "active"
-                : ""
+          <DeveloperToolsSelect
+            value={
+              activeView === "method" ||
+              activeView === "impact" ||
+              activeView === "quality" ||
+              activeView === "deadCode" ||
+              activeView === "apiExplorer"
+                ? activeView
+                : null
             }
-            onClick={() =>
-              setActiveView("deadCode")
-            }
-          >
-            <span className="impact-tab-icon">
-              ◌
-            </span>{" "}
-            Dead Code
-          </button>
+            onChange={setActiveView}
+          />
         </div>
 
         <div className="graph-heading">
@@ -773,7 +890,11 @@ export default function App() {
                     ? "Method Explorer"
                     : activeView === "impact"
                       ? "Change Impact Analyzer"
-                      : "Code Quality Analyzer"}
+                      : activeView === "quality"
+                        ? "Code Quality Analyzer"
+                        : activeView === "deadCode"
+                          ? "Dead Code Analyzer"
+                          : "API Explorer"}
             </h2>
 
             <p>
@@ -785,7 +906,11 @@ export default function App() {
                     ? "Inspect a function, component, or method as an interactive call tree and graph."
                     : activeView === "impact"
                       ? "Analyze direct consumers, downstream impact, risk, and affected symbols before changing code."
-                      : "Assess complexity, maintainability, React activity, and structural hotspots before you refactor."}
+                      : activeView === "quality"
+                        ? "Assess complexity, maintainability, React activity, and structural hotspots before you refactor."
+                        : activeView === "deadCode"
+                          ? "Find potentially unused declarations and review them before cleanup or removal."
+                          : "Explore HTTP and Firebase backend communication used by your application."}
             </p>
           </div>
 
@@ -1013,6 +1138,12 @@ export default function App() {
             projectPath={projectPath}
             defaultFilePath=""
             defaultSymbol=""
+          />
+        )}
+
+        {activeView === "apiExplorer" && (
+          <AnalyzeApiEndpoints
+            projectPath={projectPath}
           />
         )}
 

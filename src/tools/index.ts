@@ -11,6 +11,7 @@ import { registerExplainMethodTool } from "./explainMethod.js";
 import { registerAnalyzeChangeImpactTool } from "./analyzeChangeImpact.js";
 import { registerAnalyzeCodeQualityTool } from "./analyzeCodeQuality.js";
 import { registerAnalyzeDeadCodeTool } from "./analyzeDeadCode.js";
+import { registerAnalyzeApiEndpointsTool } from "./analyzeApiEndpoints.js";
 
 export function registerAllTools(server: McpServer): void {
   registerHelloDeveloperTool(server);
@@ -24,4 +25,5 @@ export function registerAllTools(server: McpServer): void {
   registerAnalyzeChangeImpactTool(server);
   registerAnalyzeCodeQualityTool(server);
   registerAnalyzeDeadCodeTool(server);
+  registerAnalyzeApiEndpointsTool(server);
 }

@@ -8,6 +8,9 @@ import { explainMethod } from "./tools/explainMethod.js";
 import { analyzeChangeImpact } from "./tools/analyzeChangeImpact.js";
 import { analyzeCodeQuality } from "./tools/analyzeCodeQuality.js";
 import { analyzeDeadCode } from "./tools/analyzeDeadCode.js";
+import {
+  analyzeApiEndpoints,
+} from "./tools/analyzeApiEndpoints.js";
 
 const app = express();
 const PORT = 4174;
@@ -379,6 +382,79 @@ app.post("/api/analyze-dead-code", async (req, res) => {
     return res.status(500).json({
       success: false,
       error: message,
+    });
+  }
+});
+
+app.post("/api/analyze-api-endpoints", async (req, res) => {
+  try {
+    const {
+      projectPath,
+      filePath,
+    } = req.body ?? {};
+
+    if (
+      typeof projectPath !== "string" ||
+      !projectPath.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "projectPath must be a non-empty string.",
+      });
+    }
+
+    if (
+      filePath !== undefined &&
+      typeof filePath !== "string"
+    ) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "filePath must be a string when provided.",
+      });
+    }
+
+    if (!isAbsolute(projectPath)) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "projectPath must be an absolute path.",
+      });
+    }
+
+    if (
+      filePath !== undefined &&
+      (
+        path.isAbsolute(filePath) ||
+        filePath
+          .split(/[\\/]/)
+          .includes("..")
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "filePath must be relative to projectPath.",
+      });
+    }
+
+    const report =
+      await analyzeApiEndpoints(
+        projectPath,
+        filePath
+      );
+
+    return res.json(report);
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "analyze_api_endpoints",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze API endpoints.",
     });
   }
 });
