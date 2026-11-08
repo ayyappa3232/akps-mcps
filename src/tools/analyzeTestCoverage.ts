@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { resolveProjectPath } from "../utils/projectResolver.js";
@@ -238,43 +239,210 @@ function findMatchingSourceFiles(
   return [...new Set([...importMatches, ...nameMatches])];
 }
 
+
+function findCoverageSummary(projectPath: string): string | undefined {
+  const candidates = [
+    path.join(projectPath, "coverage", "coverage-summary.json"),
+    path.join(projectPath, "coverage", "coverage-final.json"),
+    path.join(projectPath, "coverage", "coverage.json"),
+  ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
+function normalizeCoverageValue(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Number(value.toFixed(2));
+  }
+
+  return undefined;
+}
+
+function calculateCoverageFromFinalJson(
+  json: Record<string, any>,
+): TestCoverageReport["coverage"] {
+  const files = Object.values(json);
+
+  let linesFound = 0;
+  let linesHit = 0;
+  let statementsFound = 0;
+  let statementsHit = 0;
+  let branchesFound = 0;
+  let branchesHit = 0;
+  let functionsFound = 0;
+  let functionsHit = 0;
+
+  for (const file of files) {
+    const lineMap = file?.l ?? {};
+    const statementMap = file?.s ?? {};
+    const branchMap = file?.b ?? {};
+    const functionMap = file?.f ?? {};
+
+    const lineValues = Object.values(lineMap) as number[];
+    const statementValues = Object.values(statementMap) as number[];
+    const branchValues = Object.values(branchMap) as number[];
+    const functionValues = Object.values(functionMap) as number[];
+
+    linesFound += lineValues.length;
+    linesHit += lineValues.filter((value) => value > 0).length;
+
+    statementsFound += statementValues.length;
+    statementsHit += statementValues.filter((value) => value > 0).length;
+
+    for (const value of branchValues) {
+      const counts = Array.isArray(value) ? value : [];
+      branchesFound += counts.length;
+      branchesHit += counts.filter((count) => count > 0).length;
+    }
+
+    functionsFound += functionValues.length;
+    functionsHit += functionValues.filter((value) => value > 0).length;
+  }
+
+  const percentage = (hit: number, found: number) =>
+    found > 0 ? Number(((hit / found) * 100).toFixed(2)) : undefined;
+
+  return {
+    line: percentage(linesHit, linesFound),
+    statement: percentage(statementsHit, statementsFound),
+    branch: percentage(branchesHit, branchesFound),
+    function: percentage(functionsHit, functionsFound),
+  };
+}
+
+function readCoverageFile(
+  coveragePath: string,
+): TestCoverageReport["coverage"] {
+  try {
+    const json = JSON.parse(fs.readFileSync(coveragePath, "utf8"));
+
+    if (json.total) {
+      return {
+        line: normalizeCoverageValue(json.total.lines?.pct),
+        statement: normalizeCoverageValue(json.total.statements?.pct),
+        branch: normalizeCoverageValue(json.total.branches?.pct),
+        function: normalizeCoverageValue(json.total.functions?.pct),
+      };
+    }
+
+    if (coveragePath.endsWith("coverage-final.json")) {
+      return calculateCoverageFromFinalJson(json);
+    }
+
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+function detectCoverageProvider(projectPath: string): string | undefined {
+  const pkg = readPackage(projectPath);
+  const deps = {
+    ...(pkg.dependencies ?? {}),
+    ...(pkg.devDependencies ?? {}),
+  };
+
+  if (deps["@vitest/coverage-v8"]) return "@vitest/coverage-v8";
+  if (deps["@vitest/coverage-istanbul"]) {
+    return "@vitest/coverage-istanbul";
+  }
+
+  return undefined;
+}
+
+function hasLocalVitest(projectPath: string): boolean {
+  return fs.existsSync(
+    path.join(projectPath, "node_modules", ".bin", "vitest"),
+  );
+}
+
+function generateVitestCoverage(
+  projectPath: string,
+  warnings: string[],
+): string | undefined {
+  const provider = detectCoverageProvider(projectPath);
+
+  if (!provider) {
+    warnings.push(
+      "Vitest was detected, but no Vitest coverage provider is installed. Install @vitest/coverage-v8 or @vitest/coverage-istanbul to generate coverage.",
+    );
+    return undefined;
+  }
+
+  if (!hasLocalVitest(projectPath)) {
+    warnings.push(
+      "Vitest coverage was not generated because project dependencies are not installed in the analyzed project.",
+    );
+    return undefined;
+  }
+
+  try {
+    execFileSync(
+      path.join(projectPath, "node_modules", ".bin", "vitest"),
+      ["run", "--coverage"],
+      {
+        cwd: projectPath,
+        encoding: "utf8",
+        timeout: 120_000,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: {
+          ...process.env,
+          CI: "true",
+        },
+      },
+    );
+  } catch (error) {
+    const details =
+      error && typeof error === "object" && "stderr" in error
+        ? String((error as { stderr?: unknown }).stderr ?? "").trim()
+        : "";
+
+    warnings.push(
+      details
+        ? `Vitest coverage generation failed: ${details.slice(0, 1000)}`
+        : "Vitest coverage generation failed.",
+    );
+    return undefined;
+  }
+
+  return findCoverageSummary(projectPath);
+}
+
 function readCoverage(projectPath: string) {
   const warnings: string[] = [];
-  const summaryPath = path.join(
-    projectPath,
-    "coverage",
-    "coverage-summary.json",
-  );
 
-  if (!fs.existsSync(summaryPath)) {
+  let coveragePath = findCoverageSummary(projectPath);
+
+  if (!coveragePath) {
+    const frameworks = detectFrameworks(projectPath);
+
+    if (frameworks.includes("Vitest")) {
+      coveragePath = generateVitestCoverage(projectPath, warnings);
+    }
+  }
+
+  if (!coveragePath) {
     warnings.push(
-      "No coverage/coverage-summary.json was found. Test files were discovered, but code coverage percentages are unavailable until the project generates a coverage report.",
+      "No usable coverage report was found. Test files and test relationships are reported, but coverage percentages are unavailable.",
     );
     return { coverage: {}, warnings };
   }
 
-  try {
-    const json = JSON.parse(fs.readFileSync(summaryPath, "utf8"));
-    const total = json.total;
+  const coverage = readCoverageFile(coveragePath);
 
-    if (!total) {
-      warnings.push("Coverage summary does not contain a total section.");
-      return { coverage: {}, warnings };
-    }
-
-    return {
-      coverage: {
-        line: total.lines?.pct,
-        statement: total.statements?.pct,
-        branch: total.branches?.pct,
-        function: total.functions?.pct,
-      },
-      warnings,
-    };
-  } catch {
-    warnings.push("Coverage summary exists but could not be parsed.");
+  if (
+    coverage.line === undefined &&
+    coverage.statement === undefined &&
+    coverage.branch === undefined &&
+    coverage.function === undefined
+  ) {
+    warnings.push(
+      `Coverage report was found at ${path.relative(projectPath, coveragePath)}, but no coverage percentages could be read.`,
+    );
     return { coverage: {}, warnings };
   }
+
+  return { coverage, warnings };
 }
 
 export async function analyzeTestCoverage(
@@ -357,7 +525,7 @@ export function registerAnalyzeTestCoverageTool(server: McpServer) {
     "analyze_test_coverage",
     {
       description:
-        "Analyze test files, test counts, source-to-test relationships, untested source files, test frameworks, and available coverage reports.",
+        "Analyze test files, test counts, source-to-test relationships, untested source files, test frameworks, and available or generated coverage reports.",
       inputSchema: z.object({
         projectPath: z.string(),
         filePath: z.string().optional(),
