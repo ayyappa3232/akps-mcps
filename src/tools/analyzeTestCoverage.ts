@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { resolveProjectPath } from "../utils/projectResolver.js";
 
 export interface TestCoverageReport {
   success: boolean;
@@ -166,6 +167,77 @@ function findSourceImports(
   return [...new Set(imports)];
 }
 
+function findSourceByTestName(
+  testFile: string,
+  projectPath: string,
+  sourceFiles: Set<string>,
+): string[] {
+  const testRelativePath = path
+    .relative(projectPath, testFile)
+    .replaceAll("\\", "/");
+
+  const testName = path.basename(testRelativePath);
+  const testDirectory = path.dirname(testRelativePath);
+
+  const baseName = testName
+    .replace(/\.(test|spec)\.[^.]+$/i, "")
+    .replace(/\.[^.]+$/i, "");
+
+  if (!baseName || baseName === testName) {
+    return [];
+  }
+
+  const candidates = new Set<string>();
+
+  // Example:
+  // src/App.test.tsx -> src/App.tsx
+  for (const extension of SOURCE_EXTENSIONS) {
+    candidates.add(
+      path.join(testDirectory, `${baseName}${extension}`),
+    );
+  }
+
+  // Also support tests under __tests__:
+  // src/__tests__/App.test.tsx -> src/App.tsx
+  const normalizedDirectory = testDirectory.replaceAll("\\", "/");
+  if (
+    normalizedDirectory.endsWith("/__tests__") ||
+    normalizedDirectory === "__tests__"
+  ) {
+    const parentDirectory = path.dirname(testDirectory);
+    for (const extension of SOURCE_EXTENSIONS) {
+      candidates.add(
+        path.join(parentDirectory, `${baseName}${extension}`),
+      );
+    }
+  }
+
+  return [...candidates]
+    .map((candidate) => path.normalize(candidate))
+    .filter((candidate) => sourceFiles.has(path.resolve(projectPath, candidate)))
+    .map((candidate) => candidate.replaceAll("\\", "/"));
+}
+
+function findMatchingSourceFiles(
+  testFile: string,
+  projectPath: string,
+  sourceFiles: Set<string>,
+): string[] {
+  const importMatches = findSourceImports(
+    testFile,
+    projectPath,
+    sourceFiles,
+  );
+
+  const nameMatches = findSourceByTestName(
+    testFile,
+    projectPath,
+    sourceFiles,
+  );
+
+  return [...new Set([...importMatches, ...nameMatches])];
+}
+
 function readCoverage(projectPath: string) {
   const warnings: string[] = [];
   const summaryPath = path.join(
@@ -176,7 +248,7 @@ function readCoverage(projectPath: string) {
 
   if (!fs.existsSync(summaryPath)) {
     warnings.push(
-      "No coverage/coverage-summary.json was found. Test presence is reported, but coverage percentages are unavailable.",
+      "No coverage/coverage-summary.json was found. Test files were discovered, but code coverage percentages are unavailable until the project generates a coverage report.",
     );
     return { coverage: {}, warnings };
   }
@@ -209,21 +281,16 @@ export async function analyzeTestCoverage(
   projectPath: string,
   filePath?: string,
 ): Promise<TestCoverageReport> {
-  if (!path.isAbsolute(projectPath)) {
-    throw new Error("projectPath must be an absolute path.");
-  }
+  const resolvedProject = await resolveProjectPath(projectPath);
+  const analysisPath = resolvedProject.projectPath;
 
-  if (!fs.existsSync(projectPath)) {
-    throw new Error(`Project path does not exist: ${projectPath}`);
-  }
-
-  const allFiles = walkFiles(projectPath);
+  const allFiles = walkFiles(analysisPath);
   const testFiles = allFiles.filter(isTestFile);
   const sourceFiles = allFiles.filter((file) => !isTestFile(file));
   const sourceSet = new Set(sourceFiles);
 
   const testReports = testFiles.map((testFile) => ({
-    filePath: path.relative(projectPath, testFile),
+    filePath: path.relative(analysisPath, testFile),
     testCount: (() => {
       try {
         return countTests(fs.readFileSync(testFile, "utf8"));
@@ -231,7 +298,7 @@ export async function analyzeTestCoverage(
         return 0;
       }
     })(),
-    matchingSourceFiles: findSourceImports(testFile, projectPath, sourceSet),
+    matchingSourceFiles: findMatchingSourceFiles(testFile, analysisPath, sourceSet),
   }));
 
   const testedSourceFiles = new Set(
@@ -239,15 +306,23 @@ export async function analyzeTestCoverage(
   );
 
   let untestedSourceFiles = sourceFiles
-    .filter((file) => !testedSourceFiles.has(file))
-    .map((file) => path.relative(projectPath, file));
+    .filter((file) => {
+      const relativeFile = path
+        .relative(analysisPath, file)
+        .replaceAll("\\", "/");
+
+      return !testedSourceFiles.has(relativeFile);
+    })
+    .map((file) =>
+      path.relative(analysisPath, file).replaceAll("\\", "/"),
+    );
 
   let scopedTests = testReports;
   let scopedSources = sourceFiles;
 
   if (filePath?.trim()) {
     scopedSources = sourceFiles.filter(
-      (file) => path.relative(projectPath, file) === filePath.trim(),
+      (file) => path.relative(analysisPath, file) === filePath.trim(),
     );
     scopedTests = testReports.filter((test) =>
       test.matchingSourceFiles.includes(filePath.trim()),
@@ -257,12 +332,12 @@ export async function analyzeTestCoverage(
     );
   }
 
-  const coverageResult = readCoverage(projectPath);
+  const coverageResult = readCoverage(analysisPath);
 
   return {
     success: true,
     tool: "analyze_test_coverage",
-    projectPath,
+    projectPath: resolvedProject.originalPath,
     totalSourceFiles: scopedSources.length,
     totalTestFiles: scopedTests.length,
     totalTests: scopedTests.reduce((sum, item) => sum + item.testCount, 0),
@@ -270,7 +345,7 @@ export async function analyzeTestCoverage(
       scopedSources.length - untestedSourceFiles.length,
     sourceFilesWithoutTests: untestedSourceFiles.length,
     coverage: coverageResult.coverage,
-    testFrameworks: detectFrameworks(projectPath),
+    testFrameworks: detectFrameworks(analysisPath),
     testFiles: scopedTests,
     untestedSourceFiles,
     warnings: coverageResult.warnings,

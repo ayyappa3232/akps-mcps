@@ -151,7 +151,7 @@ export default function AnalyzeTestCoverage({
             onChange={(event) =>
               onProjectPathChange?.(event.target.value)
             }
-            placeholder="/path/to/your/project"
+            placeholder="/absolute/path/to/project or https://github.com/owner/repo"
           />
         </div>
 

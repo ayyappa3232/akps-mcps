@@ -2,6 +2,7 @@ import express from "express";
 import path from "node:path";
 import { realpathSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { resolveProjectPath } from "./utils/projectResolver.js";
 
 import { generateDependencyTrace } from "./tools/traceDependencies.js";
 import { explainMethod } from "./tools/explainMethod.js";
@@ -50,9 +51,9 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
-app.post("/api/dependencies", (req, res) => {
+app.post("/api/dependencies", async (req, res) => {
   try {
-    const {
+    let {
       projectPath,
       filePath,
       maxDepth = 5,
@@ -70,12 +71,16 @@ app.post("/api/dependencies", (req, res) => {
       return;
     }
 
-    if (!isAbsolute(projectPath)) {
-      res.status(400).json({
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
         success: false,
-        error: "projectPath must be an absolute path.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
       });
-      return;
     }
 
     if (
@@ -175,7 +180,7 @@ app.post("/api/dependencies", (req, res) => {
 
 app.post("/api/explain-method", async (req, res) => {
   try {
-    const {
+    let {
       projectPath,
       symbol,
       filePath,
@@ -193,12 +198,16 @@ app.post("/api/explain-method", async (req, res) => {
       return;
     }
 
-    if (!isAbsolute(projectPath)) {
-      res.status(400).json({
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
         success: false,
-        error: "projectPath must be an absolute path.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
       });
-      return;
     }
 
     if (
@@ -241,7 +250,7 @@ app.post("/api/explain-method", async (req, res) => {
 
 app.post("/api/analyze-change-impact", async (req, res) => {
   try {
-    const {
+    let {
       projectPath,
       filePath,
       symbol,
@@ -280,12 +289,16 @@ app.post("/api/analyze-change-impact", async (req, res) => {
       return;
     }
 
-    if (!isAbsolute(projectPath)) {
-      res.status(400).json({
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
         success: false,
-        error: "projectPath must be an absolute path.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
       });
-      return;
     }
 
     if (
@@ -332,7 +345,7 @@ app.post("/api/analyze-change-impact", async (req, res) => {
 
 app.post("/api/analyze-code-quality", async (req, res) => {
   try {
-    const { projectPath, filePath, symbol } = req.body ?? {};
+    let { projectPath, filePath, symbol } = req.body ?? {};
     if (typeof projectPath !== "string" || !projectPath.trim()) {
       return res.status(400).json({ success: false, error: "projectPath must be a non-empty string." });
     }
@@ -342,8 +355,16 @@ app.post("/api/analyze-code-quality", async (req, res) => {
     if (symbol !== undefined && typeof symbol !== "string") {
       return res.status(400).json({ success: false, error: "symbol must be a string when provided." });
     }
-    if (!isAbsolute(projectPath)) {
-      return res.status(400).json({ success: false, error: "projectPath must be an absolute path." });
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
     }
     if (filePath !== undefined && (path.isAbsolute(filePath) || filePath.split(/[\\/]/).includes(".."))) {
       return res.status(400).json({ success: false, error: "filePath must be relative to projectPath." });
@@ -356,7 +377,7 @@ app.post("/api/analyze-code-quality", async (req, res) => {
 
 app.post("/api/analyze-dead-code", async (req, res) => {
   try {
-    const {
+    let {
       projectPath,
       filePath,
       symbol,
@@ -392,7 +413,7 @@ app.post("/api/analyze-dead-code", async (req, res) => {
 
 app.post("/api/analyze-api-endpoints", async (req, res) => {
   try {
-    const {
+    let {
       projectPath,
       filePath,
     } = req.body ?? {};
@@ -419,11 +440,15 @@ app.post("/api/analyze-api-endpoints", async (req, res) => {
       });
     }
 
-    if (!isAbsolute(projectPath)) {
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
       return res.status(400).json({
         success: false,
         error:
-          "projectPath must be an absolute path.",
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
       });
     }
 
@@ -465,7 +490,7 @@ app.post("/api/analyze-api-endpoints", async (req, res) => {
 
 app.post("/api/view-source", async (req, res) => {
   try {
-    const { projectPath, filePath, line, full = false } = req.body ?? {};
+    let { projectPath, filePath, line, full = false } = req.body ?? {};
 
     if (typeof projectPath !== "string" || !projectPath.trim()) {
       return res.status(400).json({
@@ -474,10 +499,15 @@ app.post("/api/view-source", async (req, res) => {
       });
     }
 
-    if (!isAbsolute(projectPath)) {
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
       return res.status(400).json({
         success: false,
-        error: "projectPath must be an absolute path.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
       });
     }
 
@@ -526,7 +556,7 @@ app.post("/api/view-source", async (req, res) => {
 
 app.post("/api/trace-callers", async (req, res) => {
   try {
-    const {
+    let {
       projectPath,
       filePath,
       line,
@@ -542,10 +572,15 @@ app.post("/api/trace-callers", async (req, res) => {
       });
     }
 
-    if (!isAbsolute(projectPath)) {
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
       return res.status(400).json({
         success: false,
-        error: "projectPath must be an absolute path.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
       });
     }
 
@@ -601,7 +636,7 @@ app.post("/api/trace-callers", async (req, res) => {
 
 app.post("/api/analyze-security", async (req, res) => {
   try {
-    const {
+    let {
       projectPath,
       filePath,
     } = req.body ?? {};
@@ -626,10 +661,15 @@ app.post("/api/analyze-security", async (req, res) => {
       });
     }
 
-    if (!isAbsolute(projectPath)) {
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
       return res.status(400).json({
         success: false,
-        error: "projectPath must be an absolute path.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
       });
     }
 
@@ -669,7 +709,7 @@ app.post("/api/analyze-security", async (req, res) => {
 
 app.post("/api/analyze-test-coverage", async (req, res) => {
   try {
-    const { projectPath, filePath } = req.body ?? {};
+    let { projectPath, filePath } = req.body ?? {};
 
     if (typeof projectPath !== "string" || !projectPath.trim()) {
       return res.status(400).json({
@@ -685,10 +725,15 @@ app.post("/api/analyze-test-coverage", async (req, res) => {
       });
     }
 
-    if (!isAbsolute(projectPath)) {
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
       return res.status(400).json({
         success: false,
-        error: "projectPath must be an absolute path.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
       });
     }
 

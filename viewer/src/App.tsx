@@ -759,11 +759,11 @@ export default function App() {
 
       <section className="toolbar">
         <label>
-          Project absolute path
+          Project path or GitHub URL
           <input
             value={projectPath}
             onChange={(event) => setProjectPath(event.target.value)}
-            placeholder="/absolute/path/to/project"
+            placeholder="/absolute/path/to/project or https://github.com/owner/repo"
           />
         </label>
 
