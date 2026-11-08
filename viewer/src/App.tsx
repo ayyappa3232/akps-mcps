@@ -17,6 +17,8 @@ import "./styles.css";
 import MethodExplorer from "./modules/methodExplorer/MethodExplorer";
 import AnalyzeChangeImpact from "./modules/changeImpact/AnalyzeChangeImpact";
 import CodeQualityAnalyzer from "./modules/codeQuality/CodeQualityAnalyzer";
+import DeadCodeAnalyzer from "./modules/deadCode/DeadCodeAnalyzer";
+
 
 const defaultProjectPath =
   "/Users/ayyappakumar/Desktop/Ayyappa/Projects/React/My_Projects/PORTFOLIO_PROJECTS/learning-coding-hub";
@@ -152,9 +154,8 @@ function createProgressiveFlowLayout(
       sourcePosition: Position.Right,
       targetPosition: Position.Left,
       data: {
-        label: `${shortLabel}${isShared ? "  ·  SHARED" : ""}${
-          hasChildren ? (isExpanded ? "  ·  COLLAPSE" : "  ·  + EXPAND") : ""
-        }`
+        label: `${shortLabel}${isShared ? "  ·  SHARED" : ""}${hasChildren ? (isExpanded ? "  ·  COLLAPSE" : "  ·  + EXPAND") : ""
+          }`
       },
       style: {
         width: 300,
@@ -289,9 +290,8 @@ function ThemeSelect({
                 role="option"
                 aria-selected={option.value === value}
                 key={option.value}
-                className={`theme-select-option ${
-                  option.value === value ? "is-selected" : ""
-                } ${index === activeIndex ? "is-active" : ""}`}
+                className={`theme-select-option ${option.value === value ? "is-selected" : ""
+                  } ${index === activeIndex ? "is-active" : ""}`}
                 onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => choose(option)}
               >
@@ -322,7 +322,15 @@ export default function App() {
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [activeView, setActiveView] = useState<"tree" | "graph" | "method" | "impact" | "quality">("tree");
+  const [activeView, setActiveView] =
+    useState<
+      "tree" |
+      "graph" |
+      "method" |
+      "impact" |
+      "quality" |
+      "deadCode"
+    >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [expandedGraphNodes, setExpandedGraphNodes] = useState<Set<string>>(new Set());
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
@@ -525,10 +533,10 @@ export default function App() {
 
     const visibleDependencies = normalizedSearch
       ? node.dependencies.filter(
-          (dependency) =>
-            matchingFiles.has(dependency.file) ||
-            dependency.dependencies.some((child) => matchingFiles.has(child.file))
-        )
+        (dependency) =>
+          matchingFiles.has(dependency.file) ||
+          dependency.dependencies.some((child) => matchingFiles.has(child.file))
+      )
       : node.dependencies;
 
     const showChildren = normalizedSearch.length > 0 || isExpanded;
@@ -734,6 +742,23 @@ export default function App() {
             onClick={() => setActiveView("quality")}
           >
             <span className="impact-tab-icon">◈</span> Code Quality
+          </button>
+
+          <button
+            type="button"
+            className={
+              activeView === "deadCode"
+                ? "active"
+                : ""
+            }
+            onClick={() =>
+              setActiveView("deadCode")
+            }
+          >
+            <span className="impact-tab-icon">
+              ◌
+            </span>{" "}
+            Dead Code
           </button>
         </div>
 
@@ -957,29 +982,37 @@ export default function App() {
         {activeView === "method" && (
           <MethodExplorer
             projectPath={projectPath}
-            // optional overrides:
-            // apiUrl="http://127.0.0.1:4174/api/explain-method"
-            // defaultSymbol="generateGraph"
-            // defaultFilePath="viewer/src/App.tsx"
+          // optional overrides:
+          // apiUrl="http://127.0.0.1:4174/api/explain-method"
+          // defaultSymbol="generateGraph"
+          // defaultFilePath="viewer/src/App.tsx"
           />
         )}
 
         {activeView === "impact" && (
           <AnalyzeChangeImpact
             projectPath={projectPath}
-            // optional overrides:
-            // apiUrl="http://127.0.0.1:4174/api/analyze-change-impact"
-            // defaultFilePath="viewer/src/App.tsx"
-            // defaultSymbol="generateGraph"
+          // optional overrides:
+          // apiUrl="http://127.0.0.1:4174/api/analyze-change-impact"
+          // defaultFilePath="viewer/src/App.tsx"
+          // defaultSymbol="generateGraph"
           />
         )}
 
         {activeView === "quality" && (
           <CodeQualityAnalyzer
             projectPath={projectPath}
-            // apiUrl="http://127.0.0.1:4174/api/analyze-code-quality"
-            // defaultFilePath="viewer/src/App.tsx"
-            // defaultSymbol="generateGraph"
+          // apiUrl="http://127.0.0.1:4174/api/analyze-code-quality"
+          // defaultFilePath="viewer/src/App.tsx"
+          // defaultSymbol="generateGraph"
+          />
+        )}
+
+        {activeView === "deadCode" && (
+          <DeadCodeAnalyzer
+            projectPath={projectPath}
+            defaultFilePath=""
+            defaultSymbol=""
           />
         )}
 

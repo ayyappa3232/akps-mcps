@@ -7,6 +7,7 @@ import { generateDependencyTrace } from "./tools/traceDependencies.js";
 import { explainMethod } from "./tools/explainMethod.js";
 import { analyzeChangeImpact } from "./tools/analyzeChangeImpact.js";
 import { analyzeCodeQuality } from "./tools/analyzeCodeQuality.js";
+import { analyzeDeadCode } from "./tools/analyzeDeadCode.js";
 
 const app = express();
 const PORT = 4174;
@@ -343,6 +344,42 @@ app.post("/api/analyze-code-quality", async (req, res) => {
     res.json(await analyzeCodeQuality(projectPath, filePath, symbol));
   } catch (error) {
     res.status(500).json({ success: false, tool: "analyze_code_quality", error: error instanceof Error ? error.message : "Failed to analyze code quality." });
+  }
+});
+
+app.post("/api/analyze-dead-code", async (req, res) => {
+  try {
+    const {
+      projectPath,
+      filePath,
+      symbol,
+    } = req.body;
+
+    if (!projectPath) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath is required",
+      });
+    }
+
+    const report =
+      await analyzeDeadCode(
+        projectPath,
+        filePath,
+        symbol
+      );
+
+    return res.json(report);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
+    return res.status(500).json({
+      success: false,
+      error: message,
+    });
   }
 });
 

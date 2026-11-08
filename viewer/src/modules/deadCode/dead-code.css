@@ -1,0 +1,736 @@
+.dca {
+  min-width: 0;
+  width: 100%;
+  padding: 16px 20px 24px;
+  box-sizing: border-box;
+}
+
+.dca-heading {
+  margin-bottom: 4px;
+}
+
+.dca-title-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.dca-title-row svg {
+  color: #a78bfa;
+}
+
+.dca-title-row h2 {
+  margin: 0;
+}
+
+.dca-howto {
+  margin-top: 4px;
+}
+
+.dca-controls-panel {
+  margin-top: 2px;
+}
+
+.dca-controls {
+  grid-template-columns:
+    minmax(0, 1.4fr)
+    minmax(0, 1.2fr)
+    auto;
+}
+
+.dca-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 4px 0 12px;
+}
+
+.dca-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(129, 120, 255, 0.3);
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: rgba(129, 120, 255, 0.08);
+  color: #ddd9ff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dca-target-line {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.dca-stats {
+  display: grid;
+  grid-template-columns:
+    repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.dca-stat {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.dca-stat-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(148, 163, 184, 0.1);
+  color: #cbd5e1;
+}
+
+.dca-blue .dca-stat-icon {
+  color: #60a5fa;
+}
+
+.dca-purple .dca-stat-icon {
+  color: #a78bfa;
+}
+
+.dca-stat strong {
+  display: block;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.dca-stat small {
+  display: block;
+  margin-top: 4px;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.dca-workspace {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 2.15fr)
+    minmax(340px, 1fr);
+  gap: 14px;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.dca-main-panel,
+.dca-inspector {
+  min-width: 0;
+  min-height: 700px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.7);
+  overflow: hidden;
+}
+
+.dca-main-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dca-panel-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.dca-panel-toolbar h3,
+.dca-inspector-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.dca-panel-toolbar p,
+.dca-inspector-head p {
+  margin: 5px 0 0;
+  color: #7f8da3;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.dca-severity-summary {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.dca-count {
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.dca-count.high {
+  color: #fca5a5;
+}
+
+.dca-count.medium {
+  color: #fdba74;
+}
+
+.dca-count.low {
+  color: #fde68a;
+}
+
+.dca-count.info {
+  color: #93c5fd;
+}
+
+.dca-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 9px 14px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.dca-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 8px 10px;
+  background: transparent;
+  color: #7f8da3;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.dca-tabs button:hover {
+  color: #dbe4f0;
+}
+
+.dca-tabs button.active {
+  border-bottom-color: #8b7cf6;
+  color: #e7e3ff;
+}
+
+.dca-main-content {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px;
+
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 120, 255, 0.55) transparent;
+}
+
+.dca-main-content::-webkit-scrollbar,
+.dca-inspector-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dca-main-content::-webkit-scrollbar-track,
+.dca-inspector-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dca-main-content::-webkit-scrollbar-thumb,
+.dca-inspector-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(129, 120, 255, 0.45);
+}
+
+.dca-main-content::-webkit-scrollbar-thumb:hover,
+.dca-inspector-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(129, 120, 255, 0.7);
+}
+
+.dca-overview {
+  display: grid;
+  gap: 14px;
+}
+
+.dca-overview-card {
+  display: flex;
+  gap: 11px;
+  padding: 14px;
+  border: 1px solid rgba(129, 120, 255, 0.18);
+  border-radius: 11px;
+  background: rgba(129, 120, 255, 0.06);
+  color: #cbd5e1;
+}
+
+.dca-overview-card svg {
+  flex: 0 0 auto;
+  color: #a78bfa;
+}
+
+.dca-overview-card strong {
+  color: #e2e8f0;
+  font-size: 12px;
+}
+
+.dca-overview-card p {
+  margin: 5px 0 0;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.dca-overview-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.dca-overview-grid > div {
+  padding: 13px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.3);
+}
+
+.dca-overview-grid span {
+  display: block;
+  color: #7f8da3;
+  font-size: 10px;
+}
+
+.dca-overview-grid strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 20px;
+}
+
+.dca-warning-box {
+  display: flex;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid rgba(251, 191, 36, 0.18);
+  border-radius: 10px;
+  background: rgba(251, 191, 36, 0.05);
+}
+
+.dca-warning-box svg {
+  flex: 0 0 auto;
+  color: #fbbf24;
+}
+
+.dca-warning-box strong {
+  color: #fde68a;
+  font-size: 11px;
+}
+
+.dca-warning-box p {
+  margin: 5px 0 0;
+  color: #aab4c3;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.dca-issues {
+  display: grid;
+  gap: 7px;
+}
+
+.dca-issue-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.11);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(2, 6, 23, 0.25);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dca-issue-row:hover {
+  border-color: rgba(129, 120, 255, 0.35);
+  background: rgba(129, 120, 255, 0.05);
+}
+
+.dca-issue-row.selected {
+  border-color: rgba(129, 120, 255, 0.65);
+  background: rgba(129, 120, 255, 0.09);
+}
+
+.dca-issue-icon,
+.dca-detail-icon {
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+}
+
+.dca-issue-icon {
+  width: 32px;
+  height: 32px;
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.dca-issue-copy {
+  min-width: 0;
+}
+
+.dca-issue-copy strong {
+  display: block;
+  overflow: hidden;
+  color: #dbe4f0;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dca-issue-copy small {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: #7f8da3;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dca-severity {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  border-radius: 999px;
+  padding: 4px 7px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.dca-severity-high {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.dca-severity-medium {
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.1);
+}
+
+.dca-severity-low {
+  color: #fde68a;
+  background: rgba(234, 179, 8, 0.1);
+}
+
+.dca-severity-info {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.dca-empty {
+  min-height: 300px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: #7f8da3;
+  text-align: center;
+}
+
+.dca-empty svg {
+  color: #86efac;
+}
+
+.dca-empty h3 {
+  margin: 0;
+  color: #dbe4f0;
+  font-size: 14px;
+}
+
+.dca-empty p {
+  margin: 0;
+  font-size: 11px;
+}
+
+.dca-recommendations {
+  display: grid;
+  gap: 9px;
+}
+
+.dca-recommendation {
+  display: flex;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid rgba(129, 120, 255, 0.13);
+  border-radius: 10px;
+  background: rgba(129, 120, 255, 0.04);
+}
+
+.dca-recommendation svg {
+  flex: 0 0 auto;
+  color: #a78bfa;
+}
+
+.dca-recommendation p {
+  margin: 0;
+  color: #aab4c3;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.dca-inspector {
+  display: flex;
+  flex-direction: column;
+}
+
+.dca-inspector-head {
+  flex: 0 0 auto;
+  padding: 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.dca-inspector-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 15px;
+}
+
+.dca-inspector-empty {
+  min-height: 420px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: #64748b;
+  text-align: center;
+}
+
+.dca-inspector-empty svg {
+  color: #475569;
+}
+
+.dca-inspector-empty h3 {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.dca-inspector-empty p {
+  max-width: 260px;
+  margin: 0;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.dca-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.dca-detail-icon {
+  width: 38px;
+  height: 38px;
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.dca-detail-title h3 {
+  margin: 0 0 5px;
+  color: #e2e8f0;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.dca-detail-section {
+  padding: 13px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.dca-detail-section h4 {
+  margin: 0 0 7px;
+  color: #7f8da3;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dca-detail-section p {
+  margin: 0;
+  color: #b6c0ce;
+  font-size: 10px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.dca-code-path {
+  color: #93c5fd !important;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+
+.dca-reference-count {
+  display: inline-flex;
+  min-width: 38px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(129, 120, 255, 0.08);
+  color: #ddd9ff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.dca-export-warning {
+  display: flex;
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: 9px;
+  background: rgba(251, 191, 36, 0.05);
+  color: #fde68a;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1100px) {
+  .dca-stats {
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr));
+  }
+
+  .dca-workspace {
+    grid-template-columns:
+      minmax(0, 1fr);
+  }
+
+  .dca-inspector {
+    min-height: 500px;
+  }
+}
+
+@media (max-width: 760px) {
+  .dca {
+    padding: 12px;
+  }
+
+  .dca-controls {
+    grid-template-columns:
+      minmax(0, 1fr);
+  }
+
+  .dca-stats {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .dca-panel-toolbar {
+    flex-direction: column;
+  }
+
+  .dca-severity-summary {
+    justify-content: flex-start;
+  }
+
+  .dca-overview-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* =========================================================
+   Dead Code Analyzer - Two Column Layout Fix
+   ========================================================= */
+
+.dca .dca-workspace {
+  display: grid !important;
+
+  grid-template-columns:
+    minmax(0, 2.15fr)
+    minmax(340px, 1fr) !important;
+
+  gap: 14px !important;
+
+  width: 100%;
+  min-width: 0;
+
+  align-items: stretch;
+}
+
+/* Main findings panel */
+.dca .dca-main-panel {
+  min-width: 0 !important;
+  width: 100%;
+  min-height: 700px;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+}
+
+/* Right inspector */
+.dca .dca-inspector {
+  min-width: 340px !important;
+  width: 100%;
+
+  min-height: 700px;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+}
+
+/* Inspector content gets its own scroll */
+.dca .dca-inspector-body {
+  min-height: 0;
+
+  flex: 1 1 auto;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Main content gets its own scroll */
+.dca .dca-main-content {
+  min-width: 0;
+  min-height: 0;
+
+  flex: 1 1 auto;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+
+/* =========================================================
+   Responsive
+   ========================================================= */
+
+@media (max-width: 900px) {
+  .dca .dca-workspace {
+    grid-template-columns:
+      minmax(0, 1fr) !important;
+  }
+
+  .dca .dca-inspector {
+    min-width: 0 !important;
+    min-height: 500px;
+  }
+}
