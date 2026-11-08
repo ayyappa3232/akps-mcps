@@ -10,6 +10,8 @@ import { analyzeCodeQuality } from "./tools/analyzeCodeQuality.js";
 import { analyzeDeadCode } from "./tools/analyzeDeadCode.js";
 import {
   analyzeApiEndpoints,
+  readSourceSnippet,
+  traceCallers,
 } from "./tools/analyzeApiEndpoints.js";
 
 const app = express();
@@ -455,6 +457,142 @@ app.post("/api/analyze-api-endpoints", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to analyze API endpoints.",
+    });
+  }
+});
+
+app.post("/api/view-source", async (req, res) => {
+  try {
+    const { projectPath, filePath, line, full = false } = req.body ?? {};
+
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+
+    if (!isAbsolute(projectPath)) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be an absolute path.",
+      });
+    }
+
+    if (typeof filePath !== "string" || !filePath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be a non-empty string.",
+      });
+    }
+
+    if (path.isAbsolute(filePath) || filePath.split(/[\\/]/).includes("..")) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be relative to projectPath.",
+      });
+    }
+
+    if (!Number.isInteger(line) || line < 1) {
+      return res.status(400).json({
+        success: false,
+        error: "line must be a positive integer.",
+      });
+    }
+
+    if (typeof full !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "full must be a boolean.",
+      });
+    }
+
+    return res.json(
+      await readSourceSnippet(projectPath, filePath, line, { full })
+    );
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "view_source",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to read source file.",
+    });
+  }
+});
+
+app.post("/api/trace-callers", async (req, res) => {
+  try {
+    const {
+      projectPath,
+      filePath,
+      line,
+      column,
+      maxDepth = 4,
+      maxNodes = 80,
+    } = req.body ?? {};
+
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+
+    if (!isAbsolute(projectPath)) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be an absolute path.",
+      });
+    }
+
+    if (typeof filePath !== "string" || !filePath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be a non-empty string.",
+      });
+    }
+
+    if (path.isAbsolute(filePath) || filePath.split(/[\\/]/).includes("..")) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be relative to projectPath.",
+      });
+    }
+
+    if (!Number.isInteger(line) || line < 1 || !Number.isInteger(column) || column < 1) {
+      return res.status(400).json({
+        success: false,
+        error: "line and column must be positive integers.",
+      });
+    }
+
+    if (!Number.isInteger(maxDepth) || maxDepth < 1 || maxDepth > 8) {
+      return res.status(400).json({
+        success: false,
+        error: "maxDepth must be an integer between 1 and 8.",
+      });
+    }
+
+    if (!Number.isInteger(maxNodes) || maxNodes < 1 || maxNodes > 200) {
+      return res.status(400).json({
+        success: false,
+        error: "maxNodes must be an integer between 1 and 200.",
+      });
+    }
+
+    return res.json(
+      await traceCallers(projectPath, filePath, line, column, maxDepth, maxNodes)
+    );
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "trace_callers",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to trace callers.",
     });
   }
 });

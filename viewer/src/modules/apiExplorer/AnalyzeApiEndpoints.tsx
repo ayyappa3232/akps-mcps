@@ -1,19 +1,31 @@
-import { useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Activity,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Copy,
+  CornerDownRight,
   Database,
   FileCode2,
   Filter,
   Flame,
   KeyRound,
+  Layers,
   List,
+  Loader2,
   Search,
   Server,
   ShieldCheck,
   UploadCloud,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -31,6 +43,7 @@ type ApiEndpointUsage = {
   category: ApiUsageCategory;
   method: string;
   endpoint: string;
+  urlExpression?: string;
   operation?: string;
   resource?: string;
   filePath: string;
@@ -69,11 +82,99 @@ type ApiReport = {
   error?: string;
 };
 
+type SourceSnippet = {
+  success: boolean;
+  filePath: string;
+  startLine: number;
+  endLine: number;
+  totalLines: number;
+  highlightLine: number;
+  lines: string[];
+  truncated: boolean;
+  error?: string;
+};
+
+type CallTraceNode = {
+  name: string;
+  kind: string;
+  filePath: string;
+  line: number;
+  column: number;
+  callSites: Array<{ line: number; column: number }>;
+  callers: CallTraceNode[];
+  relation: "call" | "reference";
+  isCircular?: boolean;
+};
+
+type CallTraceReport = {
+  success: boolean;
+  target: {
+    name: string;
+    kind: string;
+    filePath: string;
+    line: number;
+    column: number;
+  };
+  callers: CallTraceNode[];
+  totalNodes: number;
+  truncated: boolean;
+  notes: string[];
+  error?: string;
+};
+
+type SourceState = {
+  filePath: string;
+  line: number;
+  full: boolean;
+  loading: boolean;
+  error: string;
+  data: SourceSnippet | null;
+};
+
+type TraceState = {
+  item: ApiEndpointUsage;
+  loading: boolean;
+  error: string;
+  data: CallTraceReport | null;
+};
+
 type Props = {
   projectPath: string;
   apiUrl?: string;
+  /** Defaults to the same bridge as apiUrl: .../api/view-source */
+  viewSourceUrl?: string;
+  /** Defaults to the same bridge as apiUrl: .../api/trace-callers */
+  traceCallersUrl?: string;
   defaultFilePath?: string;
 };
+
+type TileFilter = {
+  category: "all" | ApiUsageCategory;
+  method: string;
+};
+
+async function postJson<
+  T extends { success: boolean; error?: string },
+>(url: string, body: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const result = (await response.json()) as T;
+
+  if (!response.ok || !result.success) {
+    throw new Error(
+      result.error ||
+        `Request failed with status ${response.status}`,
+    );
+  }
+
+  return result;
+}
 
 const categoryLabel: Record<ApiUsageCategory, string> = {
   http: "HTTP",
@@ -134,6 +235,14 @@ function formatOperation(item: ApiEndpointUsage) {
 export default function AnalyzeApiEndpoints({
   projectPath,
   apiUrl = "http://127.0.0.1:4174/api/analyze-api-endpoints",
+  viewSourceUrl = apiUrl.replace(
+    /\/analyze-api-endpoints\/?$/,
+    "/view-source",
+  ),
+  traceCallersUrl = apiUrl.replace(
+    /\/analyze-api-endpoints\/?$/,
+    "/trace-callers",
+  ),
   defaultFilePath = "",
 }: Props) {
   const [filePath, setFilePath] = useState(defaultFilePath);
@@ -156,6 +265,15 @@ export default function AnalyzeApiEndpoints({
   const [error, setError] = useState("");
 
   const [copied, setCopied] = useState(false);
+
+  const [sourceView, setSourceView] =
+    useState<SourceState | null>(null);
+
+  const [trace, setTrace] = useState<TraceState | null>(null);
+
+  // Ignore responses that arrive after a newer request started.
+  const sourceRequest = useRef(0);
+  const traceRequest = useRef(0);
 
   async function analyze() {
     setLoading(true);
@@ -260,59 +378,143 @@ export default function AnalyzeApiEndpoints({
     ).sort();
   }, [report]);
 
-  const summaryCards = report
+  // Counted from the discovered operations themselves, so the tiles
+  // always agree with the list below.
+  const counts = useMemo(() => {
+    const result = {
+      GET: 0,
+      POST: 0,
+      PUT: 0,
+      PATCH: 0,
+      DELETE: 0,
+      OTHER: 0,
+      firestore: 0,
+      auth: 0,
+      storage: 0,
+      functions: 0,
+    };
+
+    for (const item of report?.endpoints ?? []) {
+      switch (item.category) {
+        case "firebase-firestore":
+          result.firestore += 1;
+          continue;
+        case "firebase-auth":
+          result.auth += 1;
+          continue;
+        case "firebase-storage":
+          result.storage += 1;
+          continue;
+        case "firebase-functions":
+          result.functions += 1;
+          continue;
+      }
+
+      switch (item.method) {
+        case "GET":
+        case "POST":
+        case "PUT":
+        case "PATCH":
+        case "DELETE":
+          result[item.method] += 1;
+          break;
+        default:
+          result.OTHER += 1;
+      }
+    }
+
+    return result;
+  }, [report]);
+
+  const summaryCards: Array<{
+    value: number;
+    label: string;
+    icon: ReactNode;
+    className: string;
+    filter: TileFilter;
+  }> = report
     ? [
         {
-          value: report.summary.GET,
+          value: counts.GET,
           label: "GET",
           icon: <Activity size={18} />,
           className: "blue",
+          filter: { category: "http", method: "GET" },
         },
-
         {
-          value: report.summary.POST,
+          value: counts.POST,
           label: "POST",
           icon: <Zap size={18} />,
           className: "green",
+          filter: { category: "http", method: "POST" },
         },
-
         {
-          value: report.summary.PUT,
+          value: counts.PUT,
           label: "PUT",
           icon: <Server size={18} />,
           className: "orange",
+          filter: { category: "http", method: "PUT" },
         },
-
         {
-          value: report.summary.PATCH,
+          value: counts.PATCH,
           label: "PATCH",
           icon: <ShieldCheck size={18} />,
           className: "purple",
+          filter: { category: "http", method: "PATCH" },
         },
-
         {
-          value: report.summary.DELETE,
+          value: counts.DELETE,
           label: "DELETE",
           icon: <Filter size={18} />,
           className: "red",
+          filter: { category: "http", method: "DELETE" },
         },
-
         {
-          value:
-            report.summary.FIREBASE_FIRESTORE,
+          value: counts.OTHER,
+          label: "Other / dynamic",
+          icon: <Layers size={18} />,
+          className: "gray",
+          filter: { category: "http", method: "OTHER" },
+        },
+        {
+          value: counts.firestore,
           label: "Firestore",
           icon: <Database size={18} />,
           className: "purple",
+          filter: { category: "firebase-firestore", method: "all" },
         },
-
         {
-          value: report.summary.FIREBASE_AUTH,
+          value: counts.auth,
           label: "Firebase Auth",
           icon: <KeyRound size={18} />,
           className: "blue",
+          filter: { category: "firebase-auth", method: "all" },
+        },
+        {
+          value: counts.storage,
+          label: "Storage",
+          icon: <UploadCloud size={18} />,
+          className: "orange",
+          filter: { category: "firebase-storage", method: "all" },
+        },
+        {
+          value: counts.functions,
+          label: "Functions",
+          icon: <Zap size={18} />,
+          className: "green",
+          filter: { category: "firebase-functions", method: "all" },
         },
       ]
     : [];
+
+  function applyTileFilter(filter: TileFilter) {
+    const active =
+      category === filter.category && method === filter.method;
+
+    // Clicking the active tile clears the filter.
+    setCategory(active ? "all" : filter.category);
+    setMethod(active ? "all" : filter.method);
+  }
 
   async function copyExpression() {
     if (!selected) {
@@ -329,6 +531,124 @@ export default function AnalyzeApiEndpoints({
       setCopied(false);
     }, 1400);
   }
+
+  async function openSource(
+    targetFilePath: string,
+    line: number,
+    full = false,
+  ) {
+    const requestId = ++sourceRequest.current;
+
+    setSourceView({
+      filePath: targetFilePath,
+      line,
+      full,
+      loading: true,
+      error: "",
+      data: null,
+    });
+
+    try {
+      const data = await postJson<SourceSnippet>(viewSourceUrl, {
+        projectPath: projectPath.trim(),
+        filePath: targetFilePath,
+        line,
+        full,
+      });
+
+      if (requestId === sourceRequest.current) {
+        setSourceView({
+          filePath: targetFilePath,
+          line,
+          full,
+          loading: false,
+          error: "",
+          data,
+        });
+      }
+    } catch (err) {
+      if (requestId === sourceRequest.current) {
+        setSourceView({
+          filePath: targetFilePath,
+          line,
+          full,
+          loading: false,
+          error:
+            err instanceof Error
+              ? err.message
+              : "Unable to load the source file.",
+          data: null,
+        });
+      }
+    }
+  }
+
+  async function traceCaller(item: ApiEndpointUsage) {
+    const requestId = ++traceRequest.current;
+
+    setTrace({ item, loading: true, error: "", data: null });
+
+    try {
+      const data = await postJson<CallTraceReport>(
+        traceCallersUrl,
+        {
+          projectPath: projectPath.trim(),
+          filePath: item.filePath,
+          line: item.line,
+          column: item.column,
+        },
+      );
+
+      if (requestId === traceRequest.current) {
+        setTrace({ item, loading: false, error: "", data });
+      }
+    } catch (err) {
+      if (requestId === traceRequest.current) {
+        setTrace({
+          item,
+          loading: false,
+          error:
+            err instanceof Error
+              ? err.message
+              : "Unable to trace callers.",
+          data: null,
+        });
+      }
+    }
+  }
+
+  function closeSource() {
+    sourceRequest.current += 1;
+    setSourceView(null);
+  }
+
+  function closeTrace() {
+    traceRequest.current += 1;
+    setTrace(null);
+  }
+
+  // Escape closes the top-most dialog first.
+  useEffect(() => {
+    if (!sourceView && !trace) {
+      return;
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      if (sourceView) {
+        closeSource();
+      } else {
+        closeTrace();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [sourceView, trace]);
 
   return (
     <div className="api-explorer">
@@ -447,9 +767,17 @@ export default function AnalyzeApiEndpoints({
 
           <div className="api-stats">
             {summaryCards.map((card) => (
-              <div
-                className={`api-stat api-stat-${card.className}`}
+              <button
+                type="button"
+                className={`api-stat api-stat-${card.className} ${
+                  category === card.filter.category &&
+                  method === card.filter.method
+                    ? "active"
+                    : ""
+                }`}
                 key={card.label}
+                onClick={() => applyTileFilter(card.filter)}
+                title={`Show ${card.label} operations`}
               >
                 <span className="api-stat-icon">
                   {card.icon}
@@ -464,7 +792,7 @@ export default function AnalyzeApiEndpoints({
                     {card.label}
                   </small>
                 </span>
-              </div>
+              </button>
             ))}
           </div>
 
@@ -824,6 +1152,24 @@ export default function AnalyzeApiEndpoints({
                         }
                       </strong>
                     </div>
+
+                    {selected.urlExpression && (
+                      <div>
+                        <span>
+                          Resolved from
+                        </span>
+
+                        <strong
+                          title={
+                            selected.urlExpression
+                          }
+                        >
+                          {
+                            selected.urlExpression
+                          }
+                        </strong>
+                      </div>
+                    )}
                   </div>
 
                   <div className="api-expression">
@@ -864,7 +1210,13 @@ export default function AnalyzeApiEndpoints({
                   <div className="api-actions">
                     <button
                       type="button"
-                      title="Source navigation will be connected next"
+                      title="Open the source file at this location"
+                      onClick={() =>
+                        void openSource(
+                          selected.filePath,
+                          selected.line,
+                        )
+                      }
                     >
                       <FileCode2
                         size={14}
@@ -875,7 +1227,10 @@ export default function AnalyzeApiEndpoints({
 
                     <button
                       type="button"
-                      title="Caller tracing will be connected next"
+                      title="Show which functions lead to this call"
+                      onClick={() =>
+                        void traceCaller(selected)
+                      }
                     >
                       <List
                         size={14}
@@ -966,6 +1321,376 @@ export default function AnalyzeApiEndpoints({
             </p>
           </div>
         )}
+
+      {trace && (
+        <TraceDialog
+          state={trace}
+          onClose={closeTrace}
+          onOpenSource={(file, line) =>
+            void openSource(file, line)
+          }
+        />
+      )}
+
+      {sourceView && (
+        <SourceDialog
+          state={sourceView}
+          onClose={closeSource}
+          onShowFull={() =>
+            void openSource(
+              sourceView.filePath,
+              sourceView.line,
+              true,
+            )
+          }
+        />
+      )}
     </div>
+  );
+}
+
+/* =========================================================
+   View source dialog
+   ========================================================= */
+
+function SourceDialog({
+  state,
+  onClose,
+  onShowFull,
+}: {
+  state: SourceState;
+  onClose: () => void;
+  onShowFull: () => void;
+}) {
+  const highlightRef = useRef<HTMLDivElement | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const data = state.data;
+
+  useEffect(() => {
+    highlightRef.current?.scrollIntoView({ block: "center" });
+  }, [data?.startLine, data?.endLine, data?.highlightLine]);
+
+  const partial =
+    data !== null &&
+    (data.startLine > 1 || data.endLine < data.totalLines);
+
+  return (
+    <div
+      className="api-modal-backdrop api-modal-top"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        className="api-modal api-source-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Source of ${state.filePath}`}
+      >
+        <header className="api-modal-head">
+          <div>
+            <h3>
+              <FileCode2 size={15} />
+              {state.filePath}
+            </h3>
+
+            <p>
+              {data
+                ? `Lines ${data.startLine}–${data.endLine} of ${data.totalLines} · highlighted line ${data.highlightLine}`
+                : `Line ${state.line}`}
+            </p>
+          </div>
+
+          <div className="api-modal-tools">
+            {partial && !state.loading && (
+              <button type="button" onClick={onShowFull}>
+                Show whole file
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={async () => {
+                await navigator.clipboard.writeText(
+                  state.filePath,
+                );
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1400);
+              }}
+            >
+              {copied ? <Check size={13} /> : <Copy size={13} />}
+              {copied ? "Copied" : "Copy path"}
+            </button>
+
+            <button
+              type="button"
+              className="api-icon-button"
+              onClick={onClose}
+              aria-label="Close"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </header>
+
+        <div className="api-modal-body">
+          {state.loading && (
+            <div className="api-modal-status">
+              <Loader2 size={16} className="api-spin" />
+              Loading source…
+            </div>
+          )}
+
+          {state.error && (
+            <div className="api-message error">
+              <strong>Unable to open source:</strong>{" "}
+              {state.error}
+            </div>
+          )}
+
+          {data && (
+            <div className="api-source-code">
+              {data.lines.map((text, index) => {
+                const number = data.startLine + index;
+                const highlighted =
+                  number === data.highlightLine;
+
+                return (
+                  <div
+                    key={number}
+                    ref={highlighted ? highlightRef : undefined}
+                    className={`api-source-line ${
+                      highlighted ? "highlight" : ""
+                    }`}
+                  >
+                    <span className="api-source-no">
+                      {number}
+                    </span>
+
+                    <code>{text === "" ? " " : text}</code>
+                  </div>
+                );
+              })}
+
+              {data.truncated && (
+                <div className="api-modal-status">
+                  Very large file: only part of it is shown.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   Trace caller dialog
+   ========================================================= */
+
+function TraceDialog({
+  state,
+  onClose,
+  onOpenSource,
+}: {
+  state: TraceState;
+  onClose: () => void;
+  onOpenSource: (filePath: string, line: number) => void;
+}) {
+  const data = state.data;
+
+  return (
+    <div
+      className="api-modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        className="api-modal api-trace-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Caller trace"
+      >
+        <header className="api-modal-head">
+          <div>
+            <h3>
+              <List size={15} />
+              Trace caller
+            </h3>
+
+            <p>
+              {formatOperation(state.item)} ·{" "}
+              {shortPath(state.item.filePath)}:{state.item.line}
+            </p>
+          </div>
+
+          <div className="api-modal-tools">
+            <button
+              type="button"
+              className="api-icon-button"
+              onClick={onClose}
+              aria-label="Close"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </header>
+
+        <div className="api-modal-body">
+          {state.loading && (
+            <div className="api-modal-status">
+              <Loader2 size={16} className="api-spin" />
+              Tracing callers… the first trace builds the
+              project index and can take a few seconds.
+            </div>
+          )}
+
+          {state.error && (
+            <div className="api-message error">
+              <strong>Trace failed:</strong> {state.error}
+            </div>
+          )}
+
+          {data && (
+            <>
+              <button
+                type="button"
+                className="api-trace-target"
+                onClick={() =>
+                  onOpenSource(
+                    data.target.filePath,
+                    data.target.line,
+                  )
+                }
+              >
+                <span className="api-trace-label">
+                  Function containing this call
+                </span>
+
+                <strong>{data.target.name}</strong>
+
+                <small>
+                  {data.target.filePath}:{data.target.line}
+                </small>
+              </button>
+
+              {data.callers.length > 0 ? (
+                <ul className="api-trace-tree">
+                  {data.callers.map((node, index) => (
+                    <TraceNode
+                      key={`${node.filePath}:${node.line}:${index}`}
+                      node={node}
+                      depth={0}
+                      onOpenSource={onOpenSource}
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <div className="api-modal-status">
+                  No callers found.
+                </div>
+              )}
+
+              {data.notes.length > 0 && (
+                <ul className="api-trace-notes">
+                  {data.notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TraceNode({
+  node,
+  depth,
+  onOpenSource,
+}: {
+  node: CallTraceNode;
+  depth: number;
+  onOpenSource: (filePath: string, line: number) => void;
+}) {
+  const [open, setOpen] = useState(depth < 2);
+
+  const hasChildren = node.callers.length > 0;
+
+  // Jump to where this function uses the traced function.
+  const jumpLine = node.callSites[0]?.line ?? node.line;
+
+  return (
+    <li className="api-trace-node">
+      <div className="api-trace-line">
+        {hasChildren ? (
+          <button
+            type="button"
+            className="api-trace-toggle"
+            onClick={() => setOpen((value) => !value)}
+            aria-label={open ? "Collapse" : "Expand"}
+          >
+            {open ? (
+              <ChevronDown size={14} />
+            ) : (
+              <ChevronRight size={14} />
+            )}
+          </button>
+        ) : (
+          <span className="api-trace-toggle placeholder">
+            <CornerDownRight size={13} />
+          </span>
+        )}
+
+        <button
+          type="button"
+          className="api-trace-row"
+          onClick={() => onOpenSource(node.filePath, jumpLine)}
+          title="Open source at the call site"
+        >
+          <strong>{node.name}</strong>
+
+          {node.relation === "reference" && (
+            <span className="api-trace-badge">
+              passed as callback
+            </span>
+          )}
+
+          {node.isCircular && (
+            <span className="api-trace-badge warn">
+              recursion
+            </span>
+          )}
+
+          <small>
+            {node.filePath}:{jumpLine}
+          </small>
+        </button>
+      </div>
+
+      {hasChildren && open && (
+        <ul className="api-trace-tree nested">
+          {node.callers.map((child, index) => (
+            <TraceNode
+              key={`${child.filePath}:${child.line}:${index}`}
+              node={child}
+              depth={depth + 1}
+              onOpenSource={onOpenSource}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }

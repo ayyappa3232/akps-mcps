@@ -16,6 +16,13 @@ export interface ApiEndpointUsage {
   category: ApiUsageCategory;
   method: string;
   endpoint: string;
+
+  /**
+   * The original URL expression when the endpoint was resolved from a
+   * variable / template (e.g. "apiUrl" resolved to "http://.../api/x").
+   */
+  urlExpression?: string;
+
   operation?: string;
   resource?: string;
   filePath: string;
@@ -553,246 +560,536 @@ function getFirebaseCallInfo(
   };
 }
 
-function getCallExpressionInfo(
-  node: ts.CallExpression,
-  firebaseImports: Map<string, FirebaseImportInfo>
-): {
+/* =========================================================
+   URL / method resolution
+   ========================================================= */
+
+type Confidence = "high" | "medium" | "low";
+
+interface ResolvedString {
+  text: string;
+
+  /** Every part of the string was statically known. */
+  complete: boolean;
+
+  /** The value came from a const / default parameter, not a literal. */
+  viaVariable: boolean;
+}
+
+interface HttpCallInfo {
   category: ApiUsageCategory;
   method: string;
   endpoint: string;
+  urlExpression?: string;
   operation?: string;
   resource?: string;
   library: string;
-  confidence: "high" | "medium" | "low";
-} | undefined {
-  const firebaseInfo =
-    getFirebaseCallInfo(
-      node,
-      firebaseImports
-    );
+  confidence: Confidence;
+}
 
-  if (firebaseInfo) {
-    return firebaseInfo;
+const CONFIDENCE_ORDER: Confidence[] = ["low", "medium", "high"];
+
+function lowerConfidence(value: Confidence): Confidence {
+  return CONFIDENCE_ORDER[
+    Math.max(0, CONFIDENCE_ORDER.indexOf(value) - 1)
+  ];
+}
+
+function capConfidence(
+  value: Confidence,
+  cap: Confidence
+): Confidence {
+  return CONFIDENCE_ORDER.indexOf(value) >
+    CONFIDENCE_ORDER.indexOf(cap)
+    ? cap
+    : value;
+}
+
+function unwrapExpression(
+  expression: ts.Expression
+): ts.Expression {
+  let current = expression;
+
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isNonNullExpression(current) ||
+    ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
   }
 
+  return current;
+}
 
-  const expression = node.expression;
+/**
+ * Looks for `name = "x"` in a binding pattern:
+ *   ({ apiUrl = "x" }: Props)  /  const { apiUrl = "x" } = props
+ */
+function findInBindingName(
+  bindingName: ts.BindingName,
+  name: string
+): ts.Expression | undefined {
+  if (ts.isIdentifier(bindingName)) {
+    return undefined;
+  }
 
-  /*
-   * fetch("/users")
-   * fetch("/users", { method: "POST" })
-   */
-  if (
-    ts.isIdentifier(expression) &&
-    expression.text === "fetch"
-  ) {
-    const firstArgument = node.arguments[0];
-
-    if (!firstArgument) {
-      return undefined;
+  for (const element of bindingName.elements) {
+    if (ts.isOmittedExpression(element)) {
+      continue;
     }
 
-    const endpoint =
-      getStringValue(firstArgument);
+    if (ts.isIdentifier(element.name)) {
+      if (element.name.text === name && element.initializer) {
+        return element.initializer;
+      }
+    } else {
+      const nested = findInBindingName(element.name, name);
 
-    if (!endpoint) {
-      return {
-        category: "http",
-        method: "OTHER",
-        endpoint: firstArgument.getText(),
-        library: "fetch",
-        confidence: "low",
-      };
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Finds what an identifier was initialised with, walking outwards through
+ * the enclosing scopes:
+ *   - function parameters (including destructured props with defaults)
+ *   - `const` declarations in the enclosing block / module
+ */
+function findScopedInitializer(
+  identifier: ts.Identifier
+): ts.Expression | undefined {
+  const name = identifier.text;
+
+  let current: ts.Node | undefined = identifier.parent;
+
+  while (current) {
+    if (ts.isFunctionLike(current)) {
+      for (const parameter of current.parameters) {
+        if (
+          ts.isIdentifier(parameter.name) &&
+          parameter.name.text === name &&
+          parameter.initializer
+        ) {
+          return parameter.initializer;
+        }
+
+        const fromPattern = findInBindingName(
+          parameter.name,
+          name
+        );
+
+        if (fromPattern) {
+          return fromPattern;
+        }
+      }
     }
 
-    let method = "GET";
+    if (
+      ts.isBlock(current) ||
+      ts.isSourceFile(current) ||
+      ts.isModuleBlock(current)
+    ) {
+      for (const statement of current.statements) {
+        if (
+          !ts.isVariableStatement(statement) ||
+          (statement.declarationList.flags &
+            ts.NodeFlags.Const) === 0
+        ) {
+          continue;
+        }
 
-    if (node.arguments.length >= 2) {
-      const options = node.arguments[1];
-
-      if (ts.isObjectLiteralExpression(options)) {
-        for (const property of options.properties) {
+        for (const declaration of statement.declarationList
+          .declarations) {
           if (
-            ts.isPropertyAssignment(property) &&
-            (
-              property.name &&
-              (
-                ts.isIdentifier(property.name) ||
-                ts.isStringLiteral(property.name)
-              )
-            )
+            ts.isIdentifier(declaration.name) &&
+            declaration.name.text === name &&
+            declaration.initializer
           ) {
-            const propertyName =
-              property.name.getText().replace(/["']/g, "");
+            return declaration.initializer;
+          }
 
-            if (
-              propertyName.toLowerCase() === "method"
-            ) {
-              const value =
-                getStringValue(property.initializer);
+          const fromPattern = findInBindingName(
+            declaration.name,
+            name
+          );
 
-              if (value) {
-                method = value.toUpperCase();
-              }
-            }
+          if (fromPattern) {
+            return fromPattern;
           }
         }
       }
     }
 
+    current = current.parent;
+  }
+
+  return undefined;
+}
+
+/**
+ * Statically evaluates a URL expression:
+ *   "/users"                      literal
+ *   `${BASE}/users/${id}`         template (unknown parts stay as ${...})
+ *   apiUrl / API_URL              const or default parameter
+ *   BASE + "/users"               concatenation
+ */
+function resolveStringExpression(
+  input: ts.Expression,
+  depth = 0
+): ResolvedString | undefined {
+  if (depth > 6) {
+    return undefined;
+  }
+
+  const expression = unwrapExpression(input);
+
+  if (
+    ts.isStringLiteral(expression) ||
+    ts.isNoSubstitutionTemplateLiteral(expression)
+  ) {
     return {
-      category: "http",
-      method,
-      endpoint,
-      library: "fetch",
-      confidence: "high",
+      text: expression.text,
+      complete: true,
+      viaVariable: false,
     };
   }
 
-  /*
-   * axios.get("/users")
-   * axios.post("/users")
-   * apiClient.get("/users")
-   * httpClient.get("/users")
-   * userApi.get("/users")
-   */
-  if (
-    ts.isPropertyAccessExpression(expression)
-  ) {
-    const method =
-      getHttpMethod(
-        expression.name.text
+  if (ts.isTemplateExpression(expression)) {
+    let text = expression.head.text;
+    let complete = true;
+    let viaVariable = false;
+
+    for (const span of expression.templateSpans) {
+      const inner = resolveStringExpression(
+        span.expression,
+        depth + 1
       );
 
-    if (!method) {
-      return undefined;
+      if (inner) {
+        text += inner.text;
+        complete = complete && inner.complete;
+        viaVariable = viaVariable || inner.viaVariable;
+      } else {
+        text += `\${${span.expression.getText()}}`;
+        complete = false;
+      }
+
+      text += span.literal.text;
     }
 
-    if (
-      !isLikelyHttpClientExpression(
-        expression.expression
-      )
-    ) {
-      return undefined;
-    }
-
-    const objectName =
-      expression.expression.getText();
-
-    const firstArgument =
-      node.arguments[0];
-
-    if (!firstArgument) {
-      return undefined;
-    }
-
-    const endpoint =
-      getStringValue(firstArgument);
-
-    if (!endpoint) {
-      return {
-        category: "http",
-        method,
-        endpoint: firstArgument.getText(),
-        library: objectName,
-        confidence: "low",
-      };
-    }
-
-    let library = objectName;
-
-    if (
-      objectName === "axios" ||
-      objectName === "http" ||
-      objectName === "client" ||
-      objectName === "api" ||
-      objectName === "request"
-    ) {
-      library = objectName;
-    } else {
-      library = `${objectName}.${method.toLowerCase()}`;
-    }
-
-    return {
-      category: "http",
-      method,
-      endpoint,
-      library,
-      confidence:
-        objectName === "axios"
-          ? "high"
-          : "medium",
-    };
+    return { text, complete, viaVariable };
   }
 
-  /*
-   * axios({
-   *   url: "/users",
-   *   method: "POST"
-   * })
-   */
-  if (
-    ts.isIdentifier(expression) &&
-    expression.text === "axios"
-  ) {
-    const firstArgument =
-      node.arguments[0];
+  if (ts.isIdentifier(expression)) {
+    const initializer = findScopedInitializer(expression);
 
-    if (
-      !firstArgument ||
-      !ts.isObjectLiteralExpression(firstArgument)
-    ) {
+    if (!initializer) {
       return undefined;
     }
 
-    let endpoint: string | undefined;
-    let method = "GET";
+    const resolved = resolveStringExpression(
+      initializer,
+      depth + 1
+    );
 
-    for (
-      const property of firstArgument.properties
-    ) {
-      if (
-        !ts.isPropertyAssignment(property) ||
-        !property.name
-      ) {
-        continue;
-      }
+    return resolved
+      ? { ...resolved, viaVariable: true }
+      : undefined;
+  }
 
-      const propertyName =
-        property.name.getText()
-          .replace(/["']/g, "")
-          .toLowerCase();
+  if (
+    ts.isBinaryExpression(expression) &&
+    expression.operatorToken.kind === ts.SyntaxKind.PlusToken
+  ) {
+    const left = resolveStringExpression(
+      expression.left,
+      depth + 1
+    );
 
-      if (propertyName === "url") {
-        endpoint =
-          getStringValue(property.initializer);
-      }
+    const right = resolveStringExpression(
+      expression.right,
+      depth + 1
+    );
 
-      if (propertyName === "method") {
-        const value =
-          getStringValue(property.initializer);
-
-        if (value) {
-          method =
-            value.toUpperCase();
-        }
-      }
-    }
-
-    if (!endpoint) {
+    if (!left && !right) {
       return undefined;
     }
 
     return {
-      category: "http",
-      method,
-      endpoint,
-      library: "axios",
-      confidence: "high",
+      text:
+        (left?.text ??
+          `\${${expression.left.getText()}}`) +
+        (right?.text ??
+          `\${${expression.right.getText()}}`),
+      complete:
+        Boolean(left?.complete) && Boolean(right?.complete),
+      viaVariable:
+        Boolean(left?.viaVariable) ||
+        Boolean(right?.viaVariable),
     };
   }
 
   return undefined;
+}
+
+/**
+ * Reads `method` from fetch's options argument, even when the URL itself
+ * is dynamic:  fetch(apiUrl, { method: "POST" })
+ */
+function getFetchMethod(
+  options: ts.Expression | undefined
+): { method: string; certain: boolean } {
+  if (!options) {
+    return { method: "GET", certain: true };
+  }
+
+  const literal = unwrapExpression(options);
+
+  if (!ts.isObjectLiteralExpression(literal)) {
+    return { method: "GET", certain: false };
+  }
+
+  let certain = true;
+
+  for (const property of literal.properties) {
+    if (ts.isSpreadAssignment(property)) {
+      certain = false;
+      continue;
+    }
+
+    const isMethodProperty =
+      (ts.isPropertyAssignment(property) ||
+        ts.isShorthandPropertyAssignment(property)) &&
+      (ts.isIdentifier(property.name) ||
+        ts.isStringLiteral(property.name)) &&
+      property.name.text.toLowerCase() === "method";
+
+    if (!isMethodProperty) {
+      continue;
+    }
+
+    const valueExpression = ts.isPropertyAssignment(property)
+      ? property.initializer
+      : property.name;
+
+    const value = resolveStringExpression(valueExpression);
+
+    if (value && value.complete) {
+      return { method: value.text.toUpperCase(), certain };
+    }
+
+    // `method` is present but not statically known.
+    return { method: "OTHER", certain: false };
+  }
+
+  return { method: "GET", certain };
+}
+
+function buildHttpInfo(input: {
+  method: string;
+  library: string;
+  urlArgument: ts.Expression;
+  certain: boolean;
+  cap: Confidence;
+}): HttpCallInfo {
+  const { method, library, urlArgument, certain, cap } = input;
+
+  const resolved = resolveStringExpression(urlArgument);
+
+  let confidence: Confidence;
+
+  if (!resolved) {
+    confidence = "low";
+  } else if (!resolved.complete) {
+    // /api/users/${id}: a static prefix is still a useful endpoint.
+    confidence = /^(https?:|\/)/.test(resolved.text)
+      ? "medium"
+      : "low";
+  } else {
+    confidence = resolved.viaVariable ? "medium" : "high";
+  }
+
+  if (!certain) {
+    confidence = lowerConfidence(confidence);
+  }
+
+  const original = urlArgument.getText();
+
+  const isPlainLiteral =
+    ts.isStringLiteral(urlArgument) ||
+    ts.isNoSubstitutionTemplateLiteral(urlArgument);
+
+  return {
+    category: "http",
+    method,
+    endpoint: resolved?.text ?? original,
+    urlExpression:
+      resolved && !isPlainLiteral && resolved.text !== original
+        ? original
+        : undefined,
+    library,
+    confidence: capConfidence(confidence, cap),
+  };
+}
+
+function getHttpCallInfo(
+  node: ts.CallExpression
+): HttpCallInfo | undefined {
+  const expression = node.expression;
+
+  /*
+   * fetch("/users")
+   * fetch(apiUrl, { method: "POST" })
+   */
+  if (
+    ts.isIdentifier(expression) &&
+    expression.text === "fetch"
+  ) {
+    const urlArgument = node.arguments[0];
+
+    if (!urlArgument) {
+      return undefined;
+    }
+
+    const methodInfo = getFetchMethod(node.arguments[1]);
+
+    return buildHttpInfo({
+      method: methodInfo.method,
+      library: "fetch",
+      urlArgument,
+      certain: methodInfo.certain,
+      cap: "high",
+    });
+  }
+
+  /*
+   * axios.get("/users")
+   * apiClient.post(url)
+   * userApi.delete(`/users/${id}`)
+   */
+  if (ts.isPropertyAccessExpression(expression)) {
+    const method = getHttpMethod(expression.name.text);
+
+    if (
+      !method ||
+      !isLikelyHttpClientExpression(expression.expression)
+    ) {
+      return undefined;
+    }
+
+    const urlArgument = node.arguments[0];
+
+    if (!urlArgument) {
+      return undefined;
+    }
+
+    const objectName = expression.expression.getText();
+
+    const library = /^(axios|http|client|api|request)$/.test(
+      objectName
+    )
+      ? objectName
+      : `${objectName}.${method.toLowerCase()}`;
+
+    return buildHttpInfo({
+      method,
+      library,
+      urlArgument,
+      certain: true,
+      cap: objectName === "axios" ? "high" : "medium",
+    });
+  }
+
+  return undefined;
+}
+
+/*
+ * axios({ url: "/users", method: "POST" })
+ */
+function getAxiosConfigCallInfo(
+  node: ts.CallExpression
+): HttpCallInfo | undefined {
+  if (
+    !ts.isIdentifier(node.expression) ||
+    node.expression.text !== "axios"
+  ) {
+    return undefined;
+  }
+
+  const config = node.arguments[0];
+
+  if (!config || !ts.isObjectLiteralExpression(config)) {
+    return undefined;
+  }
+
+  let urlExpression: ts.Expression | undefined;
+  let method = "GET";
+  let certain = true;
+
+  for (const property of config.properties) {
+    if (
+      !ts.isPropertyAssignment(property) &&
+      !ts.isShorthandPropertyAssignment(property)
+    ) {
+      continue;
+    }
+
+    if (
+      !ts.isIdentifier(property.name) &&
+      !ts.isStringLiteral(property.name)
+    ) {
+      continue;
+    }
+
+    const propertyName = property.name.text.toLowerCase();
+
+    const valueExpression = ts.isPropertyAssignment(property)
+      ? property.initializer
+      : property.name;
+
+    if (propertyName === "url") {
+      urlExpression = valueExpression;
+    }
+
+    if (propertyName === "method") {
+      const value = resolveStringExpression(valueExpression);
+
+      if (value?.complete) {
+        method = value.text.toUpperCase();
+      } else {
+        certain = false;
+      }
+    }
+  }
+
+  if (!urlExpression) {
+    return undefined;
+  }
+
+  return buildHttpInfo({
+    method,
+    library: "axios",
+    urlArgument: urlExpression,
+    certain,
+    cap: "high",
+  });
+}
+
+function getCallExpressionInfo(
+  node: ts.CallExpression,
+  firebaseImports: Map<string, FirebaseImportInfo>
+): HttpCallInfo | undefined {
+  return (
+    getFirebaseCallInfo(node, firebaseImports) ??
+    getHttpCallInfo(node) ??
+    getAxiosConfigCallInfo(node)
+  );
 }
 
 function collectSourceFiles(
@@ -958,6 +1255,7 @@ function analyzeSourceFile(
           category: info.category,
           method: info.method,
           endpoint: info.endpoint,
+          urlExpression: info.urlExpression,
           operation: info.operation,
           resource: info.resource,
           filePath: source.relativePath,
@@ -1086,6 +1384,751 @@ export async function analyzeApiEndpoints(
       "Variable-based URLs or Firebase resource paths are reported with lower confidence.",
       "Firebase SDK operations are reported as service operations rather than invented HTTP endpoints.",
     ],
+  };
+}
+
+/* =========================================================
+   View source
+   ========================================================= */
+
+const MAX_VIEW_BYTES = 2 * 1024 * 1024;
+const MAX_FULL_LINES = 5000;
+const DEFAULT_CONTEXT_LINES = 40;
+
+export interface SourceSnippet {
+  success: boolean;
+  filePath: string;
+  startLine: number;
+  endLine: number;
+  totalLines: number;
+  highlightLine: number;
+
+  /** Lines startLine..endLine (inclusive), without line terminators. */
+  lines: string[];
+
+  /** The file was cut because it is very large. */
+  truncated: boolean;
+}
+
+/**
+ * Resolves a project-relative path to a real file that is guaranteed to be
+ * inside the project (symlinks resolved) and of a supported source type.
+ */
+function resolveProjectFile(
+  projectPath: string,
+  filePath: string
+): { root: string; absolute: string; relative: string } {
+  if (
+    path.isAbsolute(filePath) ||
+    filePath.split(/[\\/]/).includes("..")
+  ) {
+    throw new Error("filePath must be relative to projectPath.");
+  }
+
+  if (!fs.existsSync(projectPath)) {
+    throw new Error(`Project path not found: ${projectPath}`);
+  }
+
+  const root = fs.realpathSync(path.resolve(projectPath));
+  const candidate = path.resolve(root, filePath);
+
+  if (!fs.existsSync(candidate)) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+
+  const absolute = fs.realpathSync(candidate);
+  const relative = path.relative(root, absolute);
+
+  if (
+    relative === "" ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new Error("File must be inside the project directory.");
+  }
+
+  if (!fs.statSync(absolute).isFile()) {
+    throw new Error(`Not a file: ${filePath}`);
+  }
+
+  if (
+    !SUPPORTED_EXTENSIONS.has(
+      path.extname(absolute).toLowerCase()
+    )
+  ) {
+    throw new Error(`Unsupported file type: ${filePath}`);
+  }
+
+  return {
+    root,
+    absolute,
+    relative: normalizePath(relative),
+  };
+}
+
+export async function readSourceSnippet(
+  projectPath: string,
+  filePath: string,
+  line: number,
+  options: { context?: number; full?: boolean } = {}
+): Promise<SourceSnippet> {
+  const { absolute, relative } = resolveProjectFile(
+    projectPath,
+    filePath
+  );
+
+  if (fs.statSync(absolute).size > MAX_VIEW_BYTES) {
+    throw new Error(
+      "File is too large to display (limit 2 MB)."
+    );
+  }
+
+  const allLines = fs
+    .readFileSync(absolute, "utf8")
+    .split(/\r?\n/);
+
+  const totalLines = allLines.length;
+  const highlightLine = Math.min(Math.max(1, line), totalLines);
+
+  let startLine: number;
+  let endLine: number;
+  let truncated = false;
+
+  if (options.full) {
+    startLine = 1;
+    endLine = Math.min(totalLines, MAX_FULL_LINES);
+    truncated = totalLines > MAX_FULL_LINES;
+
+    // Keep the highlighted line inside a truncated window.
+    if (highlightLine > endLine) {
+      startLine = Math.max(1, highlightLine - MAX_FULL_LINES / 2);
+      endLine = Math.min(totalLines, startLine + MAX_FULL_LINES - 1);
+    }
+  } else {
+    const context = Math.min(
+      Math.max(1, options.context ?? DEFAULT_CONTEXT_LINES),
+      400
+    );
+
+    startLine = Math.max(1, highlightLine - context);
+    endLine = Math.min(totalLines, highlightLine + context);
+  }
+
+  return {
+    success: true,
+    filePath: relative,
+    startLine,
+    endLine,
+    totalLines,
+    highlightLine,
+    lines: allLines.slice(startLine - 1, endLine),
+    truncated,
+  };
+}
+
+/* =========================================================
+   Trace callers (TypeScript call hierarchy)
+   ========================================================= */
+
+export interface CallTraceNode {
+  name: string;
+  kind: string;
+  filePath: string;
+  line: number;
+  column: number;
+
+  /** Where inside this function the traced function is called. */
+  callSites: Array<{ line: number; column: number }>;
+
+  callers: CallTraceNode[];
+
+  /**
+   * "call"      the function is invoked here
+   * "reference" it is passed as a value here (onClick={fn}, callbacks)
+   */
+  relation: "call" | "reference";
+
+  /** This function is already on the path above (recursion cycle). */
+  isCircular?: boolean;
+}
+
+export interface CallTraceReport {
+  success: boolean;
+  projectPath: string;
+  target: {
+    name: string;
+    kind: string;
+    filePath: string;
+    line: number;
+    column: number;
+  };
+  callers: CallTraceNode[];
+  totalNodes: number;
+  truncated: boolean;
+  notes: string[];
+}
+
+const TRACE_SERVICE_TTL_MS = 2 * 60 * 1000;
+const MAX_TRACE_FILES = 5000;
+
+const traceServices = new Map<
+  string,
+  { service: ts.LanguageService; createdAt: number }
+>();
+
+function listSourceFiles(root: string): string[] {
+  const files: string[] = [];
+
+  function walk(directory: string): void {
+    if (files.length >= MAX_TRACE_FILES) {
+      return;
+    }
+
+    let entries: fs.Dirent[];
+
+    try {
+      entries = fs.readdirSync(directory, {
+        withFileTypes: true,
+      });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const absolutePath = path.join(directory, entry.name);
+
+      if (entry.isDirectory()) {
+        if (!IGNORED_DIRECTORIES.has(entry.name)) {
+          walk(absolutePath);
+        }
+        continue;
+      }
+
+      if (
+        entry.isFile() &&
+        SUPPORTED_EXTENSIONS.has(
+          path.extname(entry.name).toLowerCase()
+        ) &&
+        !/\.d\.[cm]?ts$/i.test(entry.name)
+      ) {
+        files.push(absolutePath);
+      }
+    }
+  }
+
+  walk(root);
+
+  return files;
+}
+
+function loadTraceCompilerOptions(
+  root: string
+): ts.CompilerOptions {
+  let base: ts.CompilerOptions = {};
+
+  const tsconfigPath = path.join(root, "tsconfig.json");
+
+  if (fs.existsSync(tsconfigPath)) {
+    const config = ts.readConfigFile(
+      tsconfigPath,
+      ts.sys.readFile
+    );
+
+    if (!config.error) {
+      base = ts.parseJsonConfigFileContent(
+        config.config,
+        ts.sys,
+        root
+      ).options;
+    }
+  }
+
+  return {
+    ...base,
+
+    // The project may mix a NodeNext backend with a bundler-based
+    // front end (e.g. Vite), whose imports have no file extensions.
+    // "Bundler" resolves both styles.
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    allowImportingTsExtensions: true,
+    jsx: base.jsx ?? ts.JsxEmit.ReactJSX,
+    allowJs: true,
+    noEmit: true,
+    skipLibCheck: true,
+    composite: false,
+    incremental: false,
+    declaration: false,
+    declarationMap: false,
+    tsBuildInfoFile: undefined,
+  };
+}
+
+function getTraceService(root: string): ts.LanguageService {
+  const cached = traceServices.get(root);
+
+  if (
+    cached &&
+    Date.now() - cached.createdAt < TRACE_SERVICE_TTL_MS
+  ) {
+    return cached.service;
+  }
+
+  const files = listSourceFiles(root);
+  const options = loadTraceCompilerOptions(root);
+
+  const host: ts.LanguageServiceHost = {
+    getScriptFileNames: () => files,
+    getScriptVersion: (fileName) => {
+      try {
+        return String(fs.statSync(fileName).mtimeMs);
+      } catch {
+        return "0";
+      }
+    },
+    getScriptSnapshot: (fileName) => {
+      const text = ts.sys.readFile(fileName);
+
+      return text === undefined
+        ? undefined
+        : ts.ScriptSnapshot.fromString(text);
+    },
+    getCurrentDirectory: () => root,
+    getCompilationSettings: () => options,
+    getDefaultLibFileName: (compilerOptions) =>
+      ts.getDefaultLibFilePath(compilerOptions),
+    fileExists: ts.sys.fileExists,
+    readFile: ts.sys.readFile,
+    readDirectory: ts.sys.readDirectory,
+    directoryExists: ts.sys.directoryExists,
+    getDirectories: ts.sys.getDirectories,
+  };
+
+  const service = ts.createLanguageService(
+    host,
+    ts.createDocumentRegistry()
+  );
+
+  traceServices.set(root, { service, createdAt: Date.now() });
+
+  // Keep the cache small.
+  if (traceServices.size > 4) {
+    const oldest = [...traceServices.entries()].sort(
+      (a, b) => a[1].createdAt - b[1].createdAt
+    )[0];
+
+    if (oldest && oldest[0] !== root) {
+      traceServices.delete(oldest[0]);
+    }
+  }
+
+  return service;
+}
+
+function findDeepestNodeAt(
+  sourceFile: ts.SourceFile,
+  position: number
+): ts.Node {
+  let best: ts.Node = sourceFile;
+
+  function visit(node: ts.Node): void {
+    if (
+      position >= node.getFullStart() &&
+      position < node.getEnd()
+    ) {
+      best = node;
+      ts.forEachChild(node, visit);
+    }
+  }
+
+  ts.forEachChild(sourceFile, visit);
+
+  return best;
+}
+
+/**
+ * The name node of the nearest *named* function around `node`
+ * (function declaration, method, or `const name = () => {}`).
+ *
+ * `anonymousInside` is set when the call sits in an anonymous callback
+ * (an inline `onClick={() => ...}`, `useEffect(() => ...)`, ...), which
+ * has no callers of its own: it is traced through its named parent.
+ */
+function findNamedFunction(node: ts.Node): {
+  nameNode: ts.Node;
+  anonymousInside: boolean;
+} | undefined {
+  let anonymousInside = false;
+  let current: ts.Node | undefined = node;
+
+  while (current) {
+    if (
+      ts.isFunctionDeclaration(current) ||
+      ts.isMethodDeclaration(current) ||
+      ts.isGetAccessorDeclaration(current) ||
+      ts.isSetAccessorDeclaration(current)
+    ) {
+      if (current.name) {
+        return { nameNode: current.name, anonymousInside };
+      }
+    }
+
+    if (ts.isConstructorDeclaration(current)) {
+      return { nameNode: current, anonymousInside };
+    }
+
+    if (
+      ts.isArrowFunction(current) ||
+      ts.isFunctionExpression(current)
+    ) {
+      const parent: ts.Node = current.parent;
+
+      if (
+        ts.isVariableDeclaration(parent) &&
+        parent.initializer === current &&
+        ts.isIdentifier(parent.name)
+      ) {
+        return { nameNode: parent.name, anonymousInside };
+      }
+
+      anonymousInside = true;
+    }
+
+    current = current.parent;
+  }
+
+  return undefined;
+}
+
+export async function traceCallers(
+  projectPath: string,
+  filePath: string,
+  line: number,
+  column: number,
+  maxDepth = 4,
+  maxNodes = 80
+): Promise<CallTraceReport> {
+  const { root, absolute, relative } = resolveProjectFile(
+    projectPath,
+    filePath
+  );
+
+  const service = getTraceService(root);
+  const program = service.getProgram();
+  const sourceFile = program?.getSourceFile(absolute);
+
+  if (!program || !sourceFile) {
+    throw new Error(
+      `Unable to load ${relative} into the TypeScript program.`
+    );
+  }
+
+  const toLocation = (
+    file: string,
+    position: number
+  ): { filePath: string; line: number; column: number } => {
+    const target = program.getSourceFile(file);
+
+    const resolved =
+      target?.getLineAndCharacterOfPosition(position) ??
+      { line: 0, character: 0 };
+
+    return {
+      filePath: normalizePath(
+        path.relative(root, path.normalize(file))
+      ),
+      line: resolved.line + 1,
+      column: resolved.character + 1,
+    };
+  };
+
+  const notes: string[] = [];
+
+  const position = sourceFile.getPositionOfLineAndCharacter(
+    Math.max(0, line - 1),
+    Math.max(0, column - 1)
+  );
+
+  const start = findNamedFunction(
+    findDeepestNodeAt(sourceFile, position)
+  );
+
+  const emptyTarget = {
+    name: "(module top level)",
+    kind: "module",
+    filePath: relative,
+    line,
+    column,
+  };
+
+  if (!start) {
+    notes.push(
+      "This call is at module top level, so it has no enclosing function to trace."
+    );
+
+    return {
+      success: true,
+      projectPath: root,
+      target: emptyTarget,
+      callers: [],
+      totalNodes: 0,
+      truncated: false,
+      notes,
+    };
+  }
+
+  const prepared = service.prepareCallHierarchy(
+    absolute,
+    start.nameNode.getStart(sourceFile)
+  );
+
+  const rootItem = Array.isArray(prepared)
+    ? prepared[0]
+    : prepared;
+
+  if (!rootItem) {
+    notes.push(
+      "The enclosing function could not be resolved by the TypeScript call hierarchy."
+    );
+
+    return {
+      success: true,
+      projectPath: root,
+      target: emptyTarget,
+      callers: [],
+      totalNodes: 0,
+      truncated: false,
+      notes,
+    };
+  }
+
+  if (start.anonymousInside) {
+    notes.push(
+      `The call is inside an anonymous callback, so callers are traced through its enclosing function "${rootItem.name}".`
+    );
+  }
+
+  let totalNodes = 0;
+  let truncated = false;
+
+  const ancestors = new Set<string>();
+
+  const keyOf = (item: ts.CallHierarchyItem): string =>
+    `${path.normalize(item.file)}:${item.selectionSpan.start}`;
+
+  const isProjectFile = (file: string): boolean => {
+    const relativeToRoot = path.relative(
+      root,
+      path.normalize(file)
+    );
+
+    return (
+      !relativeToRoot.startsWith("..") &&
+      !relativeToRoot.split(path.sep).includes("node_modules")
+    );
+  };
+
+  interface Caller {
+    from: ts.CallHierarchyItem;
+    spans: ts.TextSpan[];
+    relation: "call" | "reference";
+  }
+
+  /**
+   * Functions that pass `item` around without calling it:
+   *   <button onClick={generateGraph} />   items.map(render)
+   */
+  function referencingFunctions(
+    item: ts.CallHierarchyItem
+  ): Caller[] {
+    const references =
+      service.getReferencesAtPosition(
+        item.file,
+        item.selectionSpan.start
+      ) ?? [];
+
+    const grouped = new Map<string, Caller>();
+
+    for (const reference of references) {
+      // Skip the declaration itself (its own name) and non-project files.
+      const isDeclarationName =
+        path.normalize(reference.fileName) ===
+          path.normalize(item.file) &&
+        reference.textSpan.start >= item.selectionSpan.start &&
+        reference.textSpan.start <
+          item.selectionSpan.start + item.selectionSpan.length;
+
+      if (
+        isDeclarationName ||
+        !isProjectFile(reference.fileName)
+      ) {
+        continue;
+      }
+
+      const file = program!.getSourceFile(reference.fileName);
+
+      if (!file) {
+        continue;
+      }
+
+      const named = findNamedFunction(
+        findDeepestNodeAt(file, reference.textSpan.start)
+      );
+
+      if (!named) {
+        continue;
+      }
+
+      const prepared = service.prepareCallHierarchy(
+        reference.fileName,
+        named.nameNode.getStart(file)
+      );
+
+      const from = Array.isArray(prepared)
+        ? prepared[0]
+        : prepared;
+
+      if (!from || keyOf(from) === keyOf(item)) {
+        continue;
+      }
+
+      const key = keyOf(from);
+      const existing = grouped.get(key);
+
+      if (existing) {
+        existing.spans.push(reference.textSpan);
+      } else {
+        grouped.set(key, {
+          from,
+          spans: [reference.textSpan],
+          relation: "reference",
+        });
+      }
+    }
+
+    return [...grouped.values()];
+  }
+
+  function callersOf(item: ts.CallHierarchyItem): Caller[] {
+    // A module has no callers (and position 0 would resolve to its
+    // first import, not to the module).
+    if (item.kind === "module") {
+      return [];
+    }
+
+    const calls: Caller[] = service
+      .provideCallHierarchyIncomingCalls(
+        item.file,
+        item.selectionSpan.start
+      )
+      .map((call) => ({
+        from: call.from,
+        spans: call.fromSpans,
+        relation: "call" as const,
+      }));
+
+    const seen = new Set(calls.map((call) => keyOf(call.from)));
+
+    // Event handlers / callbacks are referenced, not called.
+    for (const reference of referencingFunctions(item)) {
+      if (!seen.has(keyOf(reference.from))) {
+        calls.push(reference);
+      }
+    }
+
+    return calls.filter((call) => isProjectFile(call.from.file));
+  }
+
+  function collect(
+    item: ts.CallHierarchyItem,
+    depth: number
+  ): CallTraceNode[] {
+    if (depth >= maxDepth) {
+      return [];
+    }
+
+    const nodes: CallTraceNode[] = [];
+
+    for (const call of callersOf(item)) {
+      if (totalNodes >= maxNodes) {
+        truncated = true;
+        break;
+      }
+
+      totalNodes += 1;
+
+      const from = call.from;
+      const key = keyOf(from);
+      const location = toLocation(
+        from.file,
+        from.selectionSpan.start
+      );
+
+      const node: CallTraceNode = {
+        // Source files are reported by their absolute path.
+        name:
+          from.kind === "module"
+            ? location.filePath
+            : from.name,
+        kind: from.kind,
+        ...location,
+        relation: call.relation,
+        callSites: call.spans.map((span) => {
+          const site = toLocation(from.file, span.start);
+
+          return { line: site.line, column: site.column };
+        }),
+        callers: [],
+      };
+
+      if (ancestors.has(key)) {
+        node.isCircular = true;
+      } else {
+        ancestors.add(key);
+        node.callers = collect(from, depth + 1);
+        ancestors.delete(key);
+      }
+
+      nodes.push(node);
+    }
+
+    return nodes;
+  }
+
+  ancestors.add(keyOf(rootItem));
+
+  const callers = collect(rootItem, 0);
+
+  if (callers.length === 0) {
+    notes.push(
+      "No static callers were found. The function may be an entry point, an event handler, or be called dynamically."
+    );
+  }
+
+  if (truncated) {
+    notes.push(
+      `The trace was limited to ${maxNodes} nodes.`
+    );
+  }
+
+  const rootLocation = toLocation(
+    rootItem.file,
+    rootItem.selectionSpan.start
+  );
+
+  return {
+    success: true,
+    projectPath: root,
+    target: {
+      name: rootItem.name,
+      kind: rootItem.kind,
+      ...rootLocation,
+    },
+    callers,
+    totalNodes,
+    truncated,
+    notes,
   };
 }
 
