@@ -11,6 +11,9 @@ import {
   ShieldCheck,
   XCircle,
 } from "lucide-react";
+import SecuritySelect, {
+  type SecuritySelectOption,
+} from "./SecuritySelect";
 import "./analyze-security.css";
 
 type SecuritySeverity =
@@ -94,6 +97,35 @@ function categoryLabel(category: SecurityCategory): string {
     .replace(/-/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
+
+const SEVERITY_OPTIONS: {
+  value: "all" | SecuritySeverity;
+  label: string;
+}[] = [
+  { value: "all", label: "All severities" },
+  { value: "critical", label: "Critical" },
+  { value: "high", label: "High" },
+  { value: "medium", label: "Medium" },
+  { value: "low", label: "Low" },
+  { value: "info", label: "Info" },
+];
+
+const CATEGORY_OPTIONS: {
+  value: "all" | SecurityCategory;
+  label: string;
+}[] = [
+  { value: "all", label: "All categories" },
+  { value: "secrets", label: "Secrets" },
+  { value: "xss", label: "XSS" },
+  { value: "injection", label: "Injection" },
+  { value: "unsafe-code", label: "Unsafe Code" },
+  { value: "storage", label: "Storage" },
+  { value: "network", label: "Network" },
+  { value: "crypto", label: "Cryptography" },
+  { value: "logging", label: "Logging" },
+  { value: "configuration", label: "Configuration" },
+  { value: "other", label: "Other" },
+];
 
 export default function AnalyzeSecurity({
   projectPath,
@@ -186,8 +218,43 @@ export default function AnalyzeSecurity({
     });
   }, [report, search, severity, category]);
 
+  const severityOptions = useMemo<
+    SecuritySelectOption<"all" | SecuritySeverity>[]
+  >(
+    () =>
+      SEVERITY_OPTIONS.map((option) => ({
+        ...option,
+        tone: option.value === "all" ? undefined : option.value,
+        count: report
+          ? option.value === "all"
+            ? report.findings.length
+            : report.summary[option.value]
+          : undefined,
+      })),
+    [report]
+  );
+
+  const categoryOptions = useMemo<
+    SecuritySelectOption<"all" | SecurityCategory>[]
+  >(() => {
+    if (!report) return CATEGORY_OPTIONS;
+
+    const counts: Record<string, number> = {};
+    for (const finding of report.findings) {
+      counts[finding.category] = (counts[finding.category] || 0) + 1;
+    }
+
+    return CATEGORY_OPTIONS.map((option) => ({
+      ...option,
+      count:
+        option.value === "all"
+          ? report.findings.length
+          : counts[option.value] || 0,
+    }));
+  }, [report]);
+
   const selectedFinding =
-    report?.findings.find(
+    filteredFindings.find(
       (finding) => finding.id === selectedFindingId
     ) ||
     filteredFindings[0] ||
@@ -322,47 +389,19 @@ export default function AnalyzeSecurity({
                   />
                 </div>
 
-                <select
+                <SecuritySelect
+                  ariaLabel="Filter by severity"
                   value={severity}
-                  onChange={(event) =>
-                    setSeverity(
-                      event.target.value as
-                        | "all"
-                        | SecuritySeverity
-                    )
-                  }
-                >
-                  <option value="all">All severities</option>
-                  <option value="critical">Critical</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                  <option value="info">Info</option>
-                </select>
+                  options={severityOptions}
+                  onChange={setSeverity}
+                />
 
-                <select
+                <SecuritySelect
+                  ariaLabel="Filter by category"
                   value={category}
-                  onChange={(event) =>
-                    setCategory(
-                      event.target.value as
-                        | "all"
-                        | SecurityCategory
-                    )
-                  }
-                >
-                  <option value="all">All categories</option>
-                  <option value="secrets">Secrets</option>
-                  <option value="xss">XSS</option>
-                  <option value="injection">Injection</option>
-                  <option value="unsafe-code">Unsafe Code</option>
-                  <option value="storage">Storage</option>
-                  <option value="network">Network</option>
-                  <option value="crypto">Cryptography</option>
-                  <option value="logging">Logging</option>
-                  <option value="configuration">
-                    Configuration
-                  </option>
-                </select>
+                  options={categoryOptions}
+                  onChange={setCategory}
+                />
               </div>
 
               <div className="security-findings-list">
@@ -380,7 +419,7 @@ export default function AnalyzeSecurity({
                       type="button"
                       key={finding.id}
                       className={`security-finding ${
-                        selectedFindingId === finding.id
+                        selectedFinding?.id === finding.id
                           ? "selected"
                           : ""
                       }`}
@@ -537,8 +576,8 @@ export default function AnalyzeSecurity({
             <AlertTriangle size={18} />
             <div>
               <h3>Analysis notes</h3>
-              {report.warnings.map((warning) => (
-                <p key={warning}>• {warning}</p>
+              {report.warnings.map((warning, index) => (
+                <p key={`${index}-${warning}`}>• {warning}</p>
               ))}
             </div>
           </section>
