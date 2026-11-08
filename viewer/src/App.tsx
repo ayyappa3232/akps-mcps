@@ -20,6 +20,7 @@ import CodeQualityAnalyzer from "./modules/codeQuality/CodeQualityAnalyzer";
 import DeadCodeAnalyzer from "./modules/deadCode/DeadCodeAnalyzer";
 import AnalyzeApiEndpoints from "./modules/apiExplorer/AnalyzeApiEndpoints";
 import AnalyzeSecurity from "./modules/security/AnalyzeSecurity";
+import AnalyzeTestCoverage from "./modules/testCoverage/AnalyzeTestCoverage";
 
 
 const defaultProjectPath =
@@ -202,7 +203,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage";
   label: string;
   icon: string;
 };
@@ -213,7 +214,8 @@ const developerTools: DeveloperTool[] = [
   { value: "quality", label: "Code Quality", icon: "◈" },
   { value: "deadCode", label: "Dead Code", icon: "◌" },
   { value: "apiExplorer", label: "API Explorer", icon: "⇄" },
-  { value: "security", label: "Security", icon: "🔒" }
+  { value: "security", label: "Security", icon: "🔒" },
+  { value: "testCoverage", label: "Test Coverage", icon: "🧪" }
 ];
 
 function DeveloperToolsSelect({
@@ -476,7 +478,8 @@ export default function App() {
       "quality" |
       "deadCode" |
       "apiExplorer" |
-      "security"
+      "security" |
+      "testCoverage"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -873,7 +876,9 @@ export default function App() {
                 activeView === "impact" ||
                 activeView === "quality" ||
                 activeView === "deadCode" ||
-                activeView === "apiExplorer"
+                activeView === "apiExplorer" ||
+                activeView === "security" ||
+                activeView === "testCoverage"
                 ? activeView
                 : null
             }
@@ -1152,6 +1157,13 @@ export default function App() {
         {activeView === "security" && (
           <AnalyzeSecurity
             projectPath={projectPath}
+          />
+        )}
+
+        {activeView === "testCoverage" && (
+          <AnalyzeTestCoverage
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
           />
         )}
 

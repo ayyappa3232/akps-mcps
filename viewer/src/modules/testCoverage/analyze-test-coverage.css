@@ -1,0 +1,792 @@
+/* Test Coverage Analyzer */
+
+.test-coverage-analyzer {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  padding: 18px;
+
+  color: #e8edf8;
+}
+
+.test-coverage-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 8px 0 20px;
+}
+
+.test-coverage-title-icon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+
+  display: grid;
+  place-items: center;
+
+  border: 1px solid rgba(129, 120, 255, 0.38);
+  border-radius: 14px;
+
+  color: #9d95ff;
+  background: rgba(77, 66, 178, 0.18);
+}
+
+.test-coverage-title-row h1 {
+  margin: 0;
+
+  font-size: 27px;
+  line-height: 1.2;
+  font-weight: 750;
+}
+
+.test-coverage-title-row p {
+  margin: 8px 0 0;
+
+  color: #94a1ba;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.test-coverage-input-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.7fr) auto;
+  gap: 16px;
+  align-items: end;
+
+  padding: 18px;
+
+  border: 1px solid rgba(84, 108, 149, 0.35);
+  border-radius: 16px;
+
+  background: rgba(12, 18, 32, 0.64);
+}
+
+.test-coverage-field {
+  min-width: 0;
+}
+
+.test-coverage-field label {
+  display: block;
+
+  margin-bottom: 8px;
+
+  color: #c8d1e3;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.test-coverage-field label span {
+  margin-left: 5px;
+
+  color: #68758e;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.test-coverage-field input {
+  width: 100%;
+  box-sizing: border-box;
+
+  padding: 12px 14px;
+
+  border: 1px solid #30476b;
+  border-radius: 10px;
+
+  outline: none;
+
+  color: #e9eef8;
+  background: #0b1221;
+
+  font-size: 13px;
+}
+
+.test-coverage-field input::placeholder {
+  color: #596780;
+}
+
+.test-coverage-field input:focus {
+  border-color: #7167f4;
+  box-shadow: 0 0 0 3px rgba(113, 103, 244, 0.12);
+}
+
+.test-coverage-analyze-button {
+  min-height: 43px;
+
+  padding: 0 18px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  border: 0;
+  border-radius: 10px;
+
+  color: white;
+  background: linear-gradient(135deg, #766bf5, #6256e7);
+
+  font-size: 13px;
+  font-weight: 700;
+
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.test-coverage-analyze-button:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.test-coverage-analyze-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.test-coverage-spinner {
+  width: 15px;
+  height: 15px;
+
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: white;
+  border-radius: 50%;
+
+  animation: test-coverage-spin 0.8s linear infinite;
+}
+
+@keyframes test-coverage-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.test-coverage-error {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  padding: 12px 14px;
+
+  border: 1px solid rgba(241, 101, 126, 0.4);
+  border-radius: 11px;
+
+  color: #ffb1bd;
+  background: rgba(126, 35, 55, 0.18);
+
+  font-size: 13px;
+}
+
+.test-coverage-status-row {
+  margin-top: 4px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.test-coverage-success {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+
+  color: #9ee4bd;
+  font-size: 13px;
+}
+
+.test-coverage-success svg {
+  color: #63d894;
+}
+
+.test-coverage-success strong {
+  color: #dcefe5;
+}
+
+.test-coverage-scope {
+  color: #66738c;
+  font-size: 12px;
+}
+
+.test-coverage-summary-grid {
+  margin-top: 14px;
+
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.test-coverage-summary-card {
+  min-height: 94px;
+
+  padding: 16px;
+
+  display: flex;
+  align-items: center;
+  gap: 13px;
+
+  border: 1px solid rgba(77, 93, 125, 0.35);
+  border-radius: 14px;
+
+  background: #111625;
+}
+
+.test-coverage-summary-card:hover {
+  border-color: rgba(127, 116, 245, 0.58);
+}
+
+.test-coverage-summary-icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 11px;
+
+  color: #9d95ff;
+  background: rgba(91, 78, 213, 0.16);
+}
+
+.test-coverage-summary-card strong {
+  display: block;
+
+  color: #edf2fa;
+  font-size: 25px;
+}
+
+.test-coverage-summary-card span {
+  display: block;
+
+  margin-top: 6px;
+
+  color: #7d899f;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.test-coverage-workspace {
+  margin-top: 2px;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+  gap: 16px;
+
+  min-height: 540px;
+}
+
+.test-coverage-panel {
+  min-width: 0;
+  min-height: 0;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(75, 92, 126, 0.35);
+  border-radius: 16px;
+
+  background: #0d1322;
+}
+
+.test-coverage-panel-header {
+  min-height: 78px;
+
+  padding: 18px;
+  box-sizing: border-box;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+
+  border-bottom: 1px solid rgba(66, 80, 108, 0.3);
+}
+
+.test-coverage-panel-header h2 {
+  margin: 0;
+
+  color: #e5eaf4;
+  font-size: 17px;
+}
+
+.test-coverage-panel-header p {
+  margin: 5px 0 0;
+
+  color: #69758d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.test-coverage-count {
+  min-width: 42px;
+  height: 31px;
+  padding: 0 10px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px solid rgba(116, 104, 240, 0.4);
+  border-radius: 999px;
+
+  color: #b4adff;
+  background: rgba(91, 78, 213, 0.12);
+
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.test-coverage-toolbar {
+  padding: 12px;
+
+  border-bottom: 1px solid rgba(66, 80, 108, 0.3);
+}
+
+.test-coverage-search {
+  min-height: 39px;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 0 11px;
+
+  border: 1px solid #293b5a;
+  border-radius: 9px;
+
+  background: #0a101d;
+}
+
+.test-coverage-search svg {
+  flex: 0 0 auto;
+  color: #697893;
+}
+
+.test-coverage-search input {
+  min-width: 0;
+  width: 100%;
+
+  border: 0;
+  outline: none;
+
+  color: #e5eaf4;
+  background: transparent;
+
+  font-size: 13px;
+}
+
+.test-coverage-search input::placeholder {
+  color: #596780;
+}
+
+.test-coverage-file-list {
+  min-height: 390px;
+  max-height: 620px;
+
+  overflow-y: auto;
+
+  scrollbar-width: thin;
+  scrollbar-color: #2b3a58 transparent;
+}
+
+.test-coverage-file {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+
+  padding: 15px 16px;
+
+  border-bottom: 1px solid rgba(63, 76, 103, 0.26);
+}
+
+.test-coverage-file:hover {
+  background: rgba(93, 104, 140, 0.06);
+}
+
+.test-coverage-file-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 10px;
+
+  color: #8bbfff;
+  background: rgba(41, 85, 155, 0.2);
+}
+
+.test-coverage-file-content {
+  min-width: 0;
+}
+
+.test-coverage-file-content strong {
+  display: block;
+
+  color: #e4eaf5;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.test-coverage-file-content span {
+  display: block;
+
+  margin-top: 5px;
+
+  color: #697995;
+  font-size: 11px;
+}
+
+.test-coverage-empty {
+  min-height: 320px;
+
+  padding: 30px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+
+  text-align: center;
+
+  color: #7f8da8;
+}
+
+.test-coverage-empty svg {
+  color: #65e0a5;
+}
+
+.test-coverage-empty h3 {
+  margin: 2px 0 0;
+
+  color: #dfe8f8;
+  font-size: 14px;
+}
+
+.test-coverage-empty p {
+  max-width: 380px;
+
+  margin: 0;
+
+  color: #697792;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.test-coverage-metrics {
+  padding: 14px;
+
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.test-coverage-metric {
+  min-height: 84px;
+
+  padding: 14px;
+
+  border: 1px solid rgba(76, 91, 122, 0.34);
+  border-radius: 12px;
+
+  background: rgba(8, 13, 27, 0.55);
+}
+
+.test-coverage-metric > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  color: #7786a1;
+  font-size: 11px;
+}
+
+.test-coverage-metric svg {
+  color: #697893;
+}
+
+.test-coverage-metric strong {
+  display: block;
+
+  margin-top: 8px;
+
+  color: #e9effd;
+  font-size: 23px;
+}
+
+.test-coverage-good {
+  border-color: rgba(72, 190, 131, 0.32);
+}
+
+.test-coverage-good strong {
+  color: #8ee2b1;
+}
+
+.test-coverage-medium {
+  border-color: rgba(220, 170, 67, 0.32);
+}
+
+.test-coverage-medium strong {
+  color: #e6c77d;
+}
+
+.test-coverage-low {
+  border-color: rgba(241, 101, 126, 0.32);
+}
+
+.test-coverage-low strong {
+  color: #ff9eaf;
+}
+
+.test-coverage-frameworks {
+  padding: 2px 18px 18px;
+}
+
+.test-coverage-section-label {
+  margin-bottom: 9px;
+
+  color: #5f6b83;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.test-coverage-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.test-coverage-chip {
+  padding: 6px 9px;
+
+  border: 1px solid #3e4d78;
+  border-radius: 999px;
+
+  color: #b9b1ff;
+  background: rgba(98, 78, 204, 0.12);
+
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.test-coverage-muted {
+  color: #697792;
+  font-size: 12px;
+}
+
+.test-coverage-relationship {
+  padding: 0 18px 20px;
+}
+
+.test-coverage-relationship-bar {
+  height: 7px;
+
+  overflow: hidden;
+
+  border-radius: 999px;
+
+  background: #18243a;
+}
+
+.test-coverage-relationship-fill {
+  height: 100%;
+
+  border-radius: inherit;
+
+  background: linear-gradient(90deg, #766bf5, #63d894);
+
+  transition: width 0.25s ease;
+}
+
+.test-coverage-relationship-value {
+  margin-top: 8px;
+
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.test-coverage-relationship-value strong {
+  color: #c9c2ff;
+  font-size: 14px;
+}
+
+.test-coverage-relationship-value span {
+  color: #68758e;
+  font-size: 10px;
+}
+
+.test-coverage-tests {
+  margin-top: 0;
+}
+
+.test-coverage-panel-icon {
+  width: 31px;
+  height: 31px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 9px;
+
+  color: #9d95ff;
+  background: rgba(91, 78, 213, 0.12);
+}
+
+.test-coverage-test-list {
+  max-height: 480px;
+  overflow-y: auto;
+
+  scrollbar-width: thin;
+  scrollbar-color: #2b3a58 transparent;
+}
+
+.test-coverage-test-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  padding: 14px 16px;
+
+  border-bottom: 1px solid rgba(63, 76, 103, 0.26);
+}
+
+.test-coverage-test-row:hover {
+  background: rgba(93, 104, 140, 0.06);
+}
+
+.test-coverage-test-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 10px;
+
+  color: #9d95ff;
+  background: rgba(91, 78, 213, 0.15);
+}
+
+.test-coverage-test-content {
+  min-width: 0;
+}
+
+.test-coverage-test-content strong {
+  display: block;
+
+  color: #e4eaf5;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.test-coverage-test-content span {
+  display: block;
+
+  margin-top: 5px;
+
+  color: #697995;
+  font-size: 11px;
+}
+
+.test-coverage-empty-small {
+  min-height: 220px;
+}
+
+.test-coverage-notes {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+
+  padding: 15px 16px;
+
+  border: 1px solid rgba(184, 126, 45, 0.4);
+  border-radius: 12px;
+
+  color: #8995ad;
+  background: rgba(136, 92, 22, 0.07);
+
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.test-coverage-notes > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #d8b56d;
+}
+
+.test-coverage-notes h3 {
+  margin: 0 0 6px;
+
+  color: #d8b56d;
+  font-size: 12px;
+}
+
+.test-coverage-notes p {
+  margin: 3px 0;
+}
+
+@media (max-width: 1100px) {
+  .test-coverage-input-card {
+    grid-template-columns: 1fr;
+  }
+
+  .test-coverage-analyze-button {
+    justify-self: start;
+  }
+
+  .test-coverage-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .test-coverage-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .test-coverage-analyzer {
+    padding: 14px;
+  }
+
+  .test-coverage-title-row {
+    gap: 12px;
+  }
+
+  .test-coverage-title-icon {
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
+  }
+
+  .test-coverage-title-row h1 {
+    font-size: 23px;
+  }
+
+  .test-coverage-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .test-coverage-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .test-coverage-status-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .test-coverage-scope {
+    width: 100%;
+  }
+}
