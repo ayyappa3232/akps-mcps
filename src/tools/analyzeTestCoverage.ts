@@ -1,12 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
   isManagedRepositoryPath,
   resolveProjectPath,
 } from "../utils/projectResolver.js";
+
+const execFileAsync = promisify(execFile);
 
 export type CoverageUnavailableReason =
   | "no-test-framework"
@@ -26,6 +29,50 @@ export interface CoverageStatus {
   suggestions: string[];
 }
 
+export interface CoverageMetrics {
+  line?: number;
+  statement?: number;
+  branch?: number;
+  function?: number;
+}
+
+export interface LineRange {
+  start: number;
+  end: number;
+}
+
+export interface UncoveredFunction {
+  name: string;
+  line: number;
+}
+
+export interface UncoveredBranch {
+  line: number;
+  type: string;
+}
+
+export interface SourceFileSummary {
+  filePath: string;
+  linkedTestFiles: string[];
+  coverage?: CoverageMetrics;
+  uncoveredLineCount?: number;
+}
+
+export interface FileCoverageDetail {
+  filePath: string;
+  linkedTestFiles: string[];
+  coverage?: CoverageMetrics;
+  /** false when only coverage-summary.json exists (percentages, no line data). */
+  hasLineDetail: boolean;
+  /** true when no test ever executed any line of this file. */
+  neverExecuted?: boolean;
+  uncoveredLines: LineRange[];
+  uncoveredFunctions: UncoveredFunction[];
+  uncoveredBranches: UncoveredBranch[];
+  source?: string;
+  sourceTruncated?: boolean;
+}
+
 export interface TestCoverageReport {
   success: boolean;
   tool: "analyze_test_coverage";
@@ -35,12 +82,7 @@ export interface TestCoverageReport {
   totalTests: number;
   sourceFilesWithTests: number;
   sourceFilesWithoutTests: number;
-  coverage: {
-    line?: number;
-    statement?: number;
-    branch?: number;
-    function?: number;
-  };
+  coverage: CoverageMetrics;
   testFrameworks: string[];
   testFiles: {
     filePath: string;
@@ -49,6 +91,10 @@ export interface TestCoverageReport {
   }[];
   untestedSourceFiles: string[];
   coverageStatus: CoverageStatus;
+  /** Per source file: linked tests and coverage (when a report is available). */
+  sourceFiles: SourceFileSummary[];
+  /** Only present when `filePath` is requested: full detail for that file. */
+  fileDetail?: FileCoverageDetail;
   scope: "project" | "file";
   warnings: string[];
 }
@@ -455,6 +501,288 @@ function readCoverageFile(
   }
 }
 
+interface FileCoverageData {
+  metrics: CoverageMetrics;
+  hasLineDetail: boolean;
+  neverExecuted: boolean;
+  uncoveredLines: number[];
+  uncoveredFunctions: UncoveredFunction[];
+  uncoveredBranches: UncoveredBranch[];
+}
+
+const MAX_SOURCE_CHARS = 300_000;
+
+function safeRealpath(value: string): string {
+  try {
+    return fs.realpathSync(value);
+  } catch {
+    return value;
+  }
+}
+
+// Report keys are absolute paths (or relative to the project). Map them to
+// project-relative posix paths, tolerating symlinked roots (macOS /var vs /private/var).
+function toProjectRelative(projectPath: string, key: string): string | undefined {
+  const absolute = path.isAbsolute(key) ? key : path.resolve(projectPath, key);
+  const roots = [projectPath, safeRealpath(projectPath)];
+
+  for (const candidate of [absolute, safeRealpath(absolute)]) {
+    for (const root of roots) {
+      const relative = path.relative(root, candidate);
+      if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+        return relative.replaceAll("\\", "/");
+      }
+    }
+  }
+
+  return undefined;
+}
+
+const percentOf = (hit: number, found: number): number | undefined =>
+  found > 0 ? Number(((hit / found) * 100).toFixed(2)) : undefined;
+
+function toRanges(lines: number[]): LineRange[] {
+  const sorted = [...new Set(lines)].sort((a, b) => a - b);
+  const ranges: LineRange[] = [];
+
+  for (const line of sorted) {
+    const last = ranges[ranges.length - 1];
+    if (last && line === last.end + 1) last.end = line;
+    else ranges.push({ start: line, end: line });
+  }
+
+  return ranges;
+}
+
+function parseSummaryFiles(
+  json: Record<string, any>,
+  projectPath: string,
+  out: Map<string, FileCoverageData>,
+) {
+  for (const [key, value] of Object.entries(json)) {
+    if (key === "total") continue;
+    const relative = toProjectRelative(projectPath, key);
+    if (!relative) continue;
+
+    out.set(relative, {
+      metrics: {
+        line: normalizeCoverageValue(value?.lines?.pct),
+        statement: normalizeCoverageValue(value?.statements?.pct),
+        branch: normalizeCoverageValue(value?.branches?.pct),
+        function: normalizeCoverageValue(value?.functions?.pct),
+      },
+      hasLineDetail: false,
+      neverExecuted: false,
+      uncoveredLines: [],
+      uncoveredFunctions: [],
+      uncoveredBranches: [],
+    });
+  }
+}
+
+function parseFinalJsonFiles(
+  json: Record<string, any>,
+  projectPath: string,
+  out: Map<string, FileCoverageData>,
+) {
+  for (const [key, file] of Object.entries(json)) {
+    const relative = toProjectRelative(projectPath, String(file?.path ?? key));
+    if (!relative) continue;
+
+    const statementCounts = (file?.s ?? {}) as Record<string, number>;
+    const statementMap = (file?.statementMap ?? {}) as Record<string, any>;
+    const lineHits = new Map<number, number>();
+
+    for (const [id, location] of Object.entries(statementMap)) {
+      const line = location?.start?.line;
+      if (typeof line !== "number") continue;
+      lineHits.set(line, Math.max(lineHits.get(line) ?? 0, statementCounts[id] ?? 0));
+    }
+
+    const uncoveredFunctions: UncoveredFunction[] = [];
+    const functionCounts = (file?.f ?? {}) as Record<string, number>;
+    const functionMap = (file?.fnMap ?? {}) as Record<string, any>;
+
+    // Vitest/Istanbul emit a placeholder function for files no test ever loaded.
+    const isEmptyReport = Object.values(functionMap).some(
+      (meta) => meta?.name === "(empty-report)",
+    );
+
+    for (const [id, count] of Object.entries(functionCounts)) {
+      if (count > 0 || isEmptyReport) continue;
+      const meta = functionMap[id];
+      uncoveredFunctions.push({
+        name: meta?.name && meta.name !== "(anonymous)" ? String(meta.name) : "(anonymous)",
+        line: Number(meta?.decl?.start?.line ?? meta?.loc?.start?.line ?? 0),
+      });
+    }
+
+    const uncoveredBranches: UncoveredBranch[] = [];
+    const branchCounts = (file?.b ?? {}) as Record<string, number[]>;
+    const branchMap = (file?.branchMap ?? {}) as Record<string, any>;
+    let branchesFound = 0;
+    let branchesHit = 0;
+
+    for (const [id, counts] of Object.entries(branchCounts)) {
+      const meta = branchMap[id];
+      (Array.isArray(counts) ? counts : []).forEach((count, index) => {
+        if (isEmptyReport) return;
+        branchesFound++;
+        if (count > 0) {
+          branchesHit++;
+          return;
+        }
+        const line =
+          meta?.locations?.[index]?.start?.line ?? meta?.loc?.start?.line ?? 0;
+        uncoveredBranches.push({
+          line: Number(line),
+          type: String(meta?.type ?? "branch"),
+        });
+      });
+    }
+
+    const statementValues = Object.values(statementCounts);
+    const lineValues = [...lineHits.values()];
+
+    out.set(relative, {
+      metrics: {
+        line: percentOf(lineValues.filter((v) => v > 0).length, lineValues.length),
+        statement: percentOf(
+          statementValues.filter((v) => v > 0).length,
+          statementValues.length,
+        ),
+        branch: percentOf(branchesHit, branchesFound),
+        function: percentOf(
+          Object.values(functionCounts).filter((v) => v > 0).length,
+          Object.values(functionCounts).length,
+        ),
+      },
+      hasLineDetail: true,
+      neverExecuted:
+        isEmptyReport || (lineValues.length > 0 && lineValues.every((v) => v === 0)),
+      uncoveredLines: [...lineHits.entries()]
+        .filter(([, hits]) => hits === 0)
+        .map(([line]) => line),
+      uncoveredFunctions,
+      uncoveredBranches,
+    });
+  }
+}
+
+function parseLcovFiles(
+  content: string,
+  projectPath: string,
+  out: Map<string, FileCoverageData>,
+) {
+  let record: {
+    file: string;
+    lines: Map<number, number>;
+    functionLines: Map<string, number>;
+    functionHits: Map<string, number>;
+    branches: { line: number; taken: boolean }[];
+  } | null = null;
+
+  const finish = () => {
+    if (!record) return;
+    const relative = toProjectRelative(projectPath, record.file);
+
+    if (relative) {
+      const lineValues = [...record.lines.values()];
+      const functionNames = [...record.functionLines.keys()];
+
+      out.set(relative, {
+        metrics: {
+          line: percentOf(lineValues.filter((v) => v > 0).length, lineValues.length),
+          branch: percentOf(
+            record.branches.filter((b) => b.taken).length,
+            record.branches.length,
+          ),
+          function: percentOf(
+            functionNames.filter((n) => (record!.functionHits.get(n) ?? 0) > 0).length,
+            functionNames.length,
+          ),
+        },
+        hasLineDetail: true,
+        neverExecuted: lineValues.length > 0 && lineValues.every((v) => v === 0),
+        uncoveredLines: [...record.lines.entries()]
+          .filter(([, hits]) => hits === 0)
+          .map(([line]) => line),
+        uncoveredFunctions: functionNames
+          .filter((n) => (record!.functionHits.get(n) ?? 0) === 0)
+          .map((n) => ({ name: n || "(anonymous)", line: record!.functionLines.get(n) ?? 0 })),
+        uncoveredBranches: record.branches
+          .filter((b) => !b.taken)
+          .map((b) => ({ line: b.line, type: "branch" })),
+      });
+    }
+
+    record = null;
+  };
+
+  for (const raw of content.split(/\r?\n/)) {
+    if (raw.startsWith("SF:")) {
+      finish();
+      record = {
+        file: raw.slice(3),
+        lines: new Map(),
+        functionLines: new Map(),
+        functionHits: new Map(),
+        branches: [],
+      };
+    } else if (!record) {
+      continue;
+    } else if (raw.startsWith("DA:")) {
+      const [line, hits] = raw.slice(3).split(",");
+      record.lines.set(Number(line), Number(hits));
+    } else if (raw.startsWith("FN:")) {
+      const separator = raw.indexOf(",");
+      record.functionLines.set(raw.slice(separator + 1), Number(raw.slice(3, separator)));
+    } else if (raw.startsWith("FNDA:")) {
+      const separator = raw.indexOf(",");
+      record.functionHits.set(raw.slice(separator + 1), Number(raw.slice(5, separator)));
+    } else if (raw.startsWith("BRDA:")) {
+      const [line, , , taken] = raw.slice(5).split(",");
+      record.branches.push({
+        line: Number(line),
+        taken: taken !== "-" && Number(taken) > 0,
+      });
+    } else if (raw === "end_of_record") {
+      finish();
+    }
+  }
+
+  finish();
+}
+
+// Merge every report that exists: summary (percentages) < lcov < final json
+// (the last two carry line-level detail, so they win).
+function loadFileCoverage(projectPath: string): Map<string, FileCoverageData> {
+  const out = new Map<string, FileCoverageData>();
+  const dir = path.join(projectPath, "coverage");
+
+  const readJson = (name: string): Record<string, any> | undefined => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(dir, name), "utf8"));
+    } catch {
+      return undefined;
+    }
+  };
+
+  const summary = readJson("coverage-summary.json");
+  if (summary) parseSummaryFiles(summary, projectPath, out);
+
+  try {
+    parseLcovFiles(fs.readFileSync(path.join(dir, "lcov.info"), "utf8"), projectPath, out);
+  } catch {
+    // No lcov report.
+  }
+
+  const finalJson = readJson("coverage-final.json") ?? readJson("coverage.json");
+  if (finalJson && !finalJson.total) parseFinalJsonFiles(finalJson, projectPath, out);
+
+  return out;
+}
+
 function detectVitestCoverageProvider(
   projectPath: string,
 ): string | undefined {
@@ -502,54 +830,68 @@ function getPackageManager(projectPath: string): {
   };
 }
 
-function runCommand(
+async function runCommand(
   command: string,
   args: string[],
   projectPath: string,
   timeout: number,
-): { success: boolean; stderr: string; stdout: string } {
+): Promise<{ success: boolean; stderr: string; stdout: string }> {
+  const label = `${path.basename(command)} ${args.slice(0, 3).join(" ")}`;
+  const startedAt = Date.now();
+  // stderr (not stdout) so this is safe for stdio-based MCP transports.
+  console.error(`[analyze-test-coverage] started: ${label}`);
+
   try {
-    const result = execFileSync(command, args, {
+    const { stdout } = await execFileAsync(command, args, {
       cwd: projectPath,
       encoding: "utf8",
       timeout,
-      stdio: ["ignore", "pipe", "pipe"],
+      killSignal: "SIGKILL",
+      maxBuffer: 64 * 1024 * 1024,
       env: {
         ...process.env,
         CI: "true",
+        // NODE_ENV=production would make npm skip devDependencies (vitest, jest).
+        NODE_ENV: "test",
       },
     });
 
-    return {
-      success: true,
-      stdout: String(result ?? ""),
-      stderr: "",
-    };
+    console.error(
+      `[analyze-test-coverage] finished: ${label} (${Math.round((Date.now() - startedAt) / 1000)}s)`,
+    );
+    return { success: true, stdout: String(stdout ?? ""), stderr: "" };
   } catch (error) {
+    const failure = error as {
+      stdout?: unknown;
+      stderr?: unknown;
+      killed?: boolean;
+    };
+    const timedOut = Boolean(failure.killed);
+
+    console.error(
+      `[analyze-test-coverage] ${timedOut ? "timed out" : "failed"}: ${label} (${Math.round((Date.now() - startedAt) / 1000)}s)`,
+    );
+
     return {
       success: false,
-      stdout:
-        error && typeof error === "object" && "stdout" in error
-          ? String((error as { stdout?: unknown }).stdout ?? "")
-          : "",
-      stderr:
-        error && typeof error === "object" && "stderr" in error
-          ? String((error as { stderr?: unknown }).stderr ?? "").trim()
-          : "",
+      stdout: String(failure.stdout ?? ""),
+      stderr: timedOut
+        ? `Timed out after ${Math.round(timeout / 1000)}s.`
+        : String(failure.stderr ?? "").trim(),
     };
   }
 }
 
-function ensureRemoteDependencies(
+async function ensureRemoteDependencies(
   projectPath: string,
   warnings: string[],
-): boolean {
+): Promise<boolean> {
   if (fs.existsSync(path.join(projectPath, "node_modules"))) {
     return true;
   }
 
   const manager = getPackageManager(projectPath);
-  const result = runCommand(
+  const result = await runCommand(
     manager.command,
     manager.installArgs,
     projectPath,
@@ -568,10 +910,10 @@ function ensureRemoteDependencies(
   return true;
 }
 
-function installVitestCoverageProvider(
+async function installVitestCoverageProvider(
   projectPath: string,
   warnings: string[],
-): boolean {
+): Promise<boolean> {
   if (detectVitestCoverageProvider(projectPath)) return true;
 
   const pkg = readPackage(projectPath);
@@ -610,7 +952,7 @@ function installVitestCoverageProvider(
   }
 
   const manager = getPackageManager(projectPath);
-  const result = runCommand(
+  const result = await runCommand(
     manager.command,
     [...manager.addDevArgs, providerVersion],
     projectPath,
@@ -633,14 +975,14 @@ function hasLocalBinary(projectPath: string, binary: string): boolean {
   return fs.existsSync(path.join(projectPath, "node_modules", ".bin", binary));
 }
 
-function runCoverageCommand(
+async function runCoverageCommand(
   label: string,
   command: string,
   args: string[],
   projectPath: string,
   warnings: string[],
-): string | undefined {
-  const result = runCommand(command, args, projectPath, 180_000);
+): Promise<string | undefined> {
+  const result = await runCommand(command, args, projectPath, 180_000);
   const report = findCoverageReport(projectPath);
 
   if (!result.success) {
@@ -657,15 +999,15 @@ function runCoverageCommand(
 }
 
 // Only ever called for remote (cloned) projects, never for a user's local folder.
-function generateVitestCoverage(
+async function generateVitestCoverage(
   projectPath: string,
   warnings: string[],
-): string | undefined {
-  if (!ensureRemoteDependencies(projectPath, warnings)) return undefined;
+): Promise<string | undefined> {
+  if (!(await ensureRemoteDependencies(projectPath, warnings))) return undefined;
 
   if (
     !detectVitestCoverageProvider(projectPath) &&
-    !installVitestCoverageProvider(projectPath, warnings)
+    !(await installVitestCoverageProvider(projectPath, warnings))
   ) {
     return undefined;
   }
@@ -675,7 +1017,7 @@ function generateVitestCoverage(
     return undefined;
   }
 
-  return runCoverageCommand(
+  return await runCoverageCommand(
     "Vitest",
     path.join(projectPath, "node_modules", ".bin", "vitest"),
     [
@@ -689,11 +1031,11 @@ function generateVitestCoverage(
   );
 }
 
-function generateJestCoverage(
+async function generateJestCoverage(
   projectPath: string,
   warnings: string[],
-): string | undefined {
-  if (!ensureRemoteDependencies(projectPath, warnings)) return undefined;
+): Promise<string | undefined> {
+  if (!(await ensureRemoteDependencies(projectPath, warnings))) return undefined;
 
   const pkg = readPackage(projectPath);
   const isCra = Boolean(
@@ -705,7 +1047,7 @@ function generateJestCoverage(
   ];
 
   if (isCra && hasLocalBinary(projectPath, "react-scripts")) {
-    return runCoverageCommand(
+    return await runCoverageCommand(
       "Jest",
       path.join(projectPath, "node_modules", ".bin", "react-scripts"),
       ["test", "--coverage", "--watchAll=false", ...reporters],
@@ -715,7 +1057,7 @@ function generateJestCoverage(
   }
 
   if (hasLocalBinary(projectPath, "jest")) {
-    return runCoverageCommand(
+    return await runCoverageCommand(
       "Jest",
       path.join(projectPath, "node_modules", ".bin", "jest"),
       ["--coverage", "--watch=false", "--runInBand", ...reporters],
@@ -729,6 +1071,11 @@ function generateJestCoverage(
   );
   return undefined;
 }
+
+// Avoid re-running a failed install/test run on every request (e.g. every
+// click on a file in the UI). Retried after a few minutes.
+const GENERATION_RETRY_MS = 10 * 60 * 1000;
+const generationFailures = new Map<string, { at: number; warnings: string[] }>();
 
 const RUNNER_FRAMEWORKS = new Set([
   "Vitest",
@@ -825,15 +1172,15 @@ function buildUnavailableStatus(
   };
 }
 
-function readCoverage(
+async function readCoverage(
   projectPath: string,
   isRemote: boolean,
   testStats: { totalTests: number },
-): {
+): Promise<{
   coverage: TestCoverageReport["coverage"];
   warnings: string[];
   status: CoverageStatus;
-} {
+}> {
   const warnings: string[] = [];
   const frameworks = detectFrameworks(projectPath);
   const hasRunner = frameworks.some((name) => RUNNER_FRAMEWORKS.has(name));
@@ -850,10 +1197,19 @@ function readCoverage(
   // and skipped when there are no active tests to run.
   if (!coveragePath && isRemote && testStats.totalTests > 0 && canGenerate) {
     generationAttempted = true;
-    coveragePath = frameworks.includes("Vitest")
-      ? generateVitestCoverage(projectPath, warnings)
-      : generateJestCoverage(projectPath, warnings);
-    source = "generated";
+    const previousFailure = generationFailures.get(projectPath);
+
+    if (previousFailure && Date.now() - previousFailure.at < GENERATION_RETRY_MS) {
+      warnings.push(...previousFailure.warnings);
+    } else {
+      coveragePath = frameworks.includes("Vitest")
+        ? await generateVitestCoverage(projectPath, warnings)
+        : await generateJestCoverage(projectPath, warnings);
+      source = "generated";
+
+      if (coveragePath) generationFailures.delete(projectPath);
+      else generationFailures.set(projectPath, { at: Date.now(), warnings: [...warnings] });
+    }
   }
 
   if (coveragePath) {
@@ -991,10 +1347,68 @@ export async function analyzeTestCoverage(
     isRemoteProject(projectPath) ||
     isManagedRepositoryPath(analysisPath);
 
-  const coverageResult = readCoverage(analysisPath, isRemote, { totalTests });
+  const coverageResult = await readCoverage(analysisPath, isRemote, {
+    totalTests,
+  });
   warnings.push(...coverageResult.warnings);
 
-  if (requestedFile && coverageResult.status.available) {
+  const fileCoverage = coverageResult.status.available
+    ? loadFileCoverage(analysisPath)
+    : new Map<string, FileCoverageData>();
+
+  const linkedTestsBySource = new Map<string, string[]>();
+  for (const report of testReports) {
+    if (report.testCount === 0) continue;
+    for (const source of report.matchingSourceFiles) {
+      linkedTestsBySource.set(source, [
+        ...(linkedTestsBySource.get(source) ?? []),
+        report.filePath,
+      ]);
+    }
+  }
+
+  const sourceSummaries: SourceFileSummary[] = scopedSources.map((file) => {
+    const relative = relativeToProject(file);
+    const data = fileCoverage.get(relative);
+
+    return {
+      filePath: relative,
+      linkedTestFiles: linkedTestsBySource.get(relative) ?? [],
+      coverage: data?.metrics,
+      uncoveredLineCount: data?.hasLineDetail ? data.uncoveredLines.length : undefined,
+    };
+  });
+
+  let fileDetail: FileCoverageDetail | undefined;
+
+  if (requestedFile && scopedSources.length === 1) {
+    const data = fileCoverage.get(requestedFile);
+    let source: string | undefined;
+    let sourceTruncated = false;
+
+    try {
+      const raw = fs.readFileSync(scopedSources[0], "utf8");
+      sourceTruncated = raw.length > MAX_SOURCE_CHARS;
+      source = sourceTruncated ? raw.slice(0, MAX_SOURCE_CHARS) : raw;
+    } catch {
+      source = undefined;
+    }
+
+    fileDetail = {
+      filePath: requestedFile,
+      linkedTestFiles: linkedTestsBySource.get(requestedFile) ?? [],
+      coverage: data?.metrics,
+      hasLineDetail: data?.hasLineDetail ?? false,
+      neverExecuted: data?.neverExecuted ?? false,
+      uncoveredLines: toRanges(data?.uncoveredLines ?? []),
+      uncoveredFunctions: data?.uncoveredFunctions ?? [],
+      uncoveredBranches: data?.uncoveredBranches ?? [],
+      source,
+      sourceTruncated,
+    };
+  }
+
+  if (requestedFile && coverageResult.status.available && !fileDetail) {
     warnings.push(
       "Coverage percentages are project-wide, not limited to the selected file.",
     );
@@ -1014,6 +1428,8 @@ export async function analyzeTestCoverage(
     testFiles: scopedTests,
     untestedSourceFiles,
     coverageStatus: coverageResult.status,
+    sourceFiles: sourceSummaries,
+    fileDetail,
     scope: requestedFile ? "file" : "project",
     warnings,
   };

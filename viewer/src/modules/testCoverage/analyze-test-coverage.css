@@ -180,6 +180,70 @@
   font-size: 13px;
 }
 
+.test-coverage-progress {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+
+  padding: 14px 16px;
+
+  border: 1px solid rgba(116, 104, 240, 0.35);
+  border-radius: 12px;
+
+  background: rgba(91, 78, 213, 0.08);
+}
+
+.test-coverage-progress .test-coverage-spinner {
+  flex: 0 0 auto;
+}
+
+.test-coverage-progress-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.test-coverage-progress-text strong {
+  display: block;
+
+  color: #d9d5ff;
+  font-size: 13px;
+}
+
+.test-coverage-progress-text span {
+  display: block;
+
+  margin-top: 4px;
+
+  color: #8995ad;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.test-coverage-cancel-button {
+  flex: 0 0 auto;
+
+  padding: 8px 12px;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  border: 1px solid rgba(241, 101, 126, 0.4);
+  border-radius: 9px;
+
+  color: #ffb1bd;
+  background: rgba(126, 35, 55, 0.14);
+
+  font-size: 12px;
+  font-weight: 650;
+
+  cursor: pointer;
+}
+
+.test-coverage-cancel-button:hover {
+  background: rgba(126, 35, 55, 0.28);
+}
+
 .test-coverage-status-row {
   margin-top: 4px;
 
@@ -887,5 +951,340 @@
 
   .test-coverage-scope {
     width: 100%;
+  }
+}
+
+
+/* ---- Clickable rows, tabs, pills ---- */
+
+.test-coverage-file.is-clickable,
+.test-coverage-test-row.is-clickable,
+.test-coverage-linked-row {
+  width: 100%;
+  box-sizing: border-box;
+
+  border: 0;
+  border-bottom: 1px solid rgba(63, 76, 103, 0.26);
+
+  color: inherit;
+  background: transparent;
+
+  font: inherit;
+  text-align: left;
+
+  cursor: pointer;
+}
+
+.test-coverage-file.is-clickable,
+.test-coverage-linked-row {
+  align-items: center;
+}
+
+.test-coverage-file.is-clickable:hover,
+.test-coverage-test-row.is-clickable:hover,
+.test-coverage-linked-row:hover {
+  background: rgba(93, 104, 140, 0.1);
+}
+
+.test-coverage-file.is-selected,
+.test-coverage-test-row.is-selected {
+  background: rgba(113, 103, 244, 0.12);
+  box-shadow: inset 3px 0 0 #766bf5;
+}
+
+.test-coverage-file-content,
+.test-coverage-test-content {
+  flex: 1;
+}
+
+.test-coverage-linked-row {
+  display: flex;
+  gap: 12px;
+  padding: 13px 4px;
+}
+
+.test-coverage-linked-list {
+  margin: -6px -4px 6px;
+}
+
+.test-coverage-chevron {
+  flex: 0 0 auto;
+  color: #5b6985;
+}
+
+.test-coverage-pill {
+  flex: 0 0 auto;
+
+  padding: 4px 9px;
+
+  border: 1px solid transparent;
+  border-radius: 999px;
+
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.test-coverage-pill-good {
+  color: #8ee2b1;
+  border-color: rgba(72, 190, 131, 0.35);
+  background: rgba(72, 190, 131, 0.1);
+}
+
+.test-coverage-pill-medium {
+  color: #e6c77d;
+  border-color: rgba(220, 170, 67, 0.35);
+  background: rgba(220, 170, 67, 0.1);
+}
+
+.test-coverage-pill-low {
+  color: #ff9eaf;
+  border-color: rgba(241, 101, 126, 0.35);
+  background: rgba(241, 101, 126, 0.1);
+}
+
+.test-coverage-pill-unknown {
+  color: #697792;
+  border-color: rgba(105, 119, 146, 0.3);
+  background: rgba(105, 119, 146, 0.08);
+}
+
+.test-coverage-tabs {
+  display: flex;
+  gap: 6px;
+
+  padding: 10px 12px 0;
+}
+
+.test-coverage-tabs button {
+  padding: 7px 12px;
+
+  border: 1px solid transparent;
+  border-radius: 999px;
+
+  color: #7d899f;
+  background: transparent;
+
+  font-size: 12px;
+  font-weight: 650;
+
+  cursor: pointer;
+}
+
+.test-coverage-tabs button:hover {
+  color: #c8d1e3;
+}
+
+.test-coverage-tabs button.is-active {
+  color: #c9c2ff;
+  border-color: rgba(116, 104, 240, 0.4);
+  background: rgba(91, 78, 213, 0.14);
+}
+
+/* ---- Detail panel ---- */
+
+.test-coverage-detail {
+  scroll-margin-top: 16px;
+}
+
+.test-coverage-detail .test-coverage-panel-header h2 {
+  overflow-wrap: anywhere;
+}
+
+.test-coverage-close-button {
+  flex: 0 0 auto;
+
+  width: 31px;
+  height: 31px;
+
+  display: grid;
+  place-items: center;
+
+  border: 1px solid rgba(75, 92, 126, 0.45);
+  border-radius: 9px;
+
+  color: #8995ad;
+  background: transparent;
+
+  cursor: pointer;
+}
+
+.test-coverage-close-button:hover {
+  color: #e5eaf4;
+  background: rgba(93, 104, 140, 0.15);
+}
+
+.test-coverage-detail-body {
+  padding: 16px 18px 20px;
+}
+
+.test-coverage-detail-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  color: #8995ad;
+  font-size: 13px;
+}
+
+.test-coverage-metrics-flush {
+  padding: 14px 0;
+
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.test-coverage-detail-note {
+  margin: 12px 0 0;
+
+  color: #7d899f;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.test-coverage-detail-note code,
+.test-coverage-detail-list code {
+  padding: 1px 6px;
+
+  border-radius: 6px;
+
+  color: #c9c2ff;
+  background: rgba(98, 78, 204, 0.16);
+
+  font-size: 11px;
+}
+
+.test-coverage-gap-top {
+  margin-top: 16px;
+}
+
+.test-coverage-chip-button {
+  cursor: pointer;
+}
+
+.test-coverage-chip-button:hover {
+  border-color: #7167f4;
+}
+
+.test-coverage-chip-danger {
+  color: #ff9eaf;
+  border-color: rgba(241, 101, 126, 0.4);
+  background: rgba(241, 101, 126, 0.1);
+
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.test-coverage-detail-list {
+  margin: 0;
+  padding: 0;
+
+  list-style: none;
+}
+
+.test-coverage-detail-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  padding: 7px 0;
+
+  border-bottom: 1px solid rgba(63, 76, 103, 0.2);
+
+  font-size: 12px;
+}
+
+.test-coverage-detail-list li span {
+  color: #697995;
+}
+
+/* ---- Code viewer ---- */
+
+.test-coverage-code-header {
+  margin-top: 20px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.test-coverage-code-header .test-coverage-section-label {
+  margin-bottom: 0;
+}
+
+.test-coverage-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+
+  color: #8995ad;
+  font-size: 12px;
+
+  cursor: pointer;
+}
+
+.test-coverage-code {
+  margin-top: 10px;
+  max-height: 520px;
+
+  overflow: auto;
+
+  border: 1px solid rgba(66, 80, 108, 0.4);
+  border-radius: 10px;
+
+  background: #0a101d;
+
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.65;
+
+  scrollbar-width: thin;
+  scrollbar-color: #2b3a58 transparent;
+}
+
+.test-coverage-code-line {
+  display: flex;
+
+  min-width: max-content;
+
+  border-left: 3px solid transparent;
+}
+
+.test-coverage-code-line.is-uncovered {
+  border-left-color: #f1657e;
+  background: rgba(241, 101, 126, 0.13);
+}
+
+.test-coverage-code-no {
+  flex: 0 0 52px;
+
+  padding: 0 12px 0 0;
+
+  color: #51607c;
+  text-align: right;
+  user-select: none;
+}
+
+.test-coverage-code-line.is-uncovered .test-coverage-code-no {
+  color: #ff9eaf;
+}
+
+.test-coverage-code-line code {
+  color: #cdd6e8;
+  white-space: pre;
+}
+
+.test-coverage-code-gap {
+  padding: 3px 0 3px 64px;
+
+  color: #51607c;
+  background: rgba(93, 104, 140, 0.06);
+
+  font-size: 11px;
+}
+
+@media (max-width: 700px) {
+  .test-coverage-metrics-flush {
+    grid-template-columns: 1fr;
   }
 }
