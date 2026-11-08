@@ -19,6 +19,7 @@ import AnalyzeChangeImpact from "./modules/changeImpact/AnalyzeChangeImpact";
 import CodeQualityAnalyzer from "./modules/codeQuality/CodeQualityAnalyzer";
 import DeadCodeAnalyzer from "./modules/deadCode/DeadCodeAnalyzer";
 import AnalyzeApiEndpoints from "./modules/apiExplorer/AnalyzeApiEndpoints";
+import AnalyzeSecurity from "./modules/security/AnalyzeSecurity";
 
 
 const defaultProjectPath =
@@ -201,7 +202,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security";
   label: string;
   icon: string;
 };
@@ -211,7 +212,8 @@ const developerTools: DeveloperTool[] = [
   { value: "impact", label: "Change Impact", icon: "↯" },
   { value: "quality", label: "Code Quality", icon: "◈" },
   { value: "deadCode", label: "Dead Code", icon: "◌" },
-  { value: "apiExplorer", label: "API Explorer", icon: "⇄" }
+  { value: "apiExplorer", label: "API Explorer", icon: "⇄" },
+  { value: "security", label: "Security", icon: "🔒" }
 ];
 
 function DeveloperToolsSelect({
@@ -313,9 +315,8 @@ function DeveloperToolsSelect({
                   role="option"
                   aria-selected={tool.value === value}
                   key={tool.value}
-                  className={`developer-tools-option ${
-                    tool.value === value ? "is-selected" : ""
-                  }`}
+                  className={`developer-tools-option ${tool.value === value ? "is-selected" : ""
+                    }`}
                   onClick={() => chooseTool(tool)}
                 >
                   <span className="developer-tools-option-icon">
@@ -474,7 +475,8 @@ export default function App() {
       "impact" |
       "quality" |
       "deadCode" |
-      "apiExplorer"
+      "apiExplorer" |
+      "security"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -868,10 +870,10 @@ export default function App() {
           <DeveloperToolsSelect
             value={
               activeView === "method" ||
-              activeView === "impact" ||
-              activeView === "quality" ||
-              activeView === "deadCode" ||
-              activeView === "apiExplorer"
+                activeView === "impact" ||
+                activeView === "quality" ||
+                activeView === "deadCode" ||
+                activeView === "apiExplorer"
                 ? activeView
                 : null
             }
@@ -1143,6 +1145,12 @@ export default function App() {
 
         {activeView === "apiExplorer" && (
           <AnalyzeApiEndpoints
+            projectPath={projectPath}
+          />
+        )}
+
+        {activeView === "security" && (
+          <AnalyzeSecurity
             projectPath={projectPath}
           />
         )}

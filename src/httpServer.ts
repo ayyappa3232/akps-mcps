@@ -13,6 +13,7 @@ import {
   readSourceSnippet,
   traceCallers,
 } from "./tools/analyzeApiEndpoints.js";
+import { analyzeSecurity } from "./tools/analyzeSecurity.js";
 
 const app = express();
 const PORT = 4174;
@@ -593,6 +594,74 @@ app.post("/api/trace-callers", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to trace callers.",
+    });
+  }
+});
+
+app.post("/api/analyze-security", async (req, res) => {
+  try {
+    const {
+      projectPath,
+      filePath,
+    } = req.body ?? {};
+
+    if (
+      typeof projectPath !== "string" ||
+      !projectPath.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+
+    if (
+      filePath !== undefined &&
+      typeof filePath !== "string"
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be a string when provided.",
+      });
+    }
+
+    if (!isAbsolute(projectPath)) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be an absolute path.",
+      });
+    }
+
+    if (
+      filePath !== undefined &&
+      (
+        path.isAbsolute(filePath) ||
+        filePath
+          .split(/[\\/]/)
+          .includes("..")
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be relative to projectPath.",
+      });
+    }
+
+    const report = await analyzeSecurity(
+      projectPath,
+      filePath,
+    );
+
+    return res.json(report);
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "analyze_security",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze project security.",
     });
   }
 });
