@@ -24,6 +24,7 @@ import AnalyzeTestCoverage from "./modules/testCoverage/AnalyzeTestCoverage";
 import AnalyzeDependencyHealth from "./modules/dependenciesHealth/AnalyzeDependencyHealth";
 import AnalyzeCircularDependencies from "./modules/circularDependencies/AnalyzeCircularDependencies";
 import DetectDuplicateCode from "./modules/duplicateCodeDetector/DetectDuplicateCode";
+import AnalyzeReactComponents from "./modules/reactComponents/AnalyzeReactComponents";
 
 
 const defaultProjectPath =
@@ -206,7 +207,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents";
   label: string;
   icon: string;
 };
@@ -221,7 +222,8 @@ const developerTools: DeveloperTool[] = [
   { value: "testCoverage", label: "Test Coverage", icon: "🧪" },
   { value: "dependencyHealth", label: "Dependency Health", icon: "📦" },
   { value: "circularDependencies", label: "Circular Dependencies", icon: "⟳" },
-  { value: "duplicateCode", label: "Duplicate Code", icon: "⧉" }
+  { value: "duplicateCode", label: "Duplicate Code", icon: "⧉" },
+  { value: "reactComponents", label: "React Components", icon: "⚛" }
 ];
 
 function DeveloperToolsSelect({
@@ -488,7 +490,8 @@ export default function App() {
       "testCoverage" |
       "dependencyHealth" |
       "circularDependencies" |
-      "duplicateCode"
+      "duplicateCode" |
+      "reactComponents"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -890,7 +893,8 @@ export default function App() {
                 activeView === "testCoverage" ||
                 activeView === "dependencyHealth" ||
                 activeView === "circularDependencies" ||
-                activeView === "duplicateCode"
+                activeView === "duplicateCode" ||
+                activeView === "reactComponents"
                 ? activeView
                 : null
             }
@@ -923,7 +927,9 @@ export default function App() {
                                   ? "Circular Dependency Analyzer"
                                   : activeView === "duplicateCode"
                                     ? "Duplicate Code Detector"
-                                    : "API Explorer"}
+                                    : activeView === "reactComponents"
+                                      ? "React Component Analyzer"
+                                      : "API Explorer"}
             </h2>
 
             <p>
@@ -949,7 +955,9 @@ export default function App() {
                                   ? "Find import loops between files and get a ready-made patch to break each one."
                                   : activeView === "duplicateCode"
                                     ? "Find copied code blocks, compare the copies side by side, and see where to merge them."
-                                    : "Explore HTTP and Firebase backend communication used by your application."}
+                                    : activeView === "reactComponents"
+                                      ? "Inspect props, hooks, and render relationships for every component, and fix hook, effect, and list problems."
+                                      : "Explore HTTP and Firebase backend communication used by your application."}
             </p>
           </div>
 
@@ -1215,6 +1223,13 @@ export default function App() {
 
         {activeView === "duplicateCode" && (
           <DetectDuplicateCode
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "reactComponents" && (
+          <AnalyzeReactComponents
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />

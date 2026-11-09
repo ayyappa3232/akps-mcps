@@ -1504,7 +1504,8 @@ body,
 .developer-tools-options {
   display: grid;
   gap: 4px;
-  max-height: min(400px, 60vh);
+  /* Tall enough for every developer tool (11+ rows) before it needs to scroll. */
+  max-height: min(540px, 70vh);
   overflow-y: auto;
   margin-top: 7px;
   padding-right: 2px;

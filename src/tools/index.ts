@@ -14,6 +14,7 @@ import { registerAnalyzeDeadCodeTool } from "./analyzeDeadCode.js";
 import { registerAnalyzeApiEndpointsTool } from "./analyzeApiEndpoints.js";
 import { registerAnalyzeCircularDependenciesTool } from "./analyzeCircularDependencies.js";
 import { registerDetectDuplicateCodeTool } from "./detectDuplicateCode.js";
+import { registerAnalyzeReactComponentsTool } from "./analyzeReactComponents.js";
 
 export function registerAllTools(server: McpServer): void {
   registerHelloDeveloperTool(server);
@@ -30,4 +31,5 @@ export function registerAllTools(server: McpServer): void {
   registerAnalyzeApiEndpointsTool(server);
   registerAnalyzeCircularDependenciesTool(server);
   registerDetectDuplicateCodeTool(server);
+  registerAnalyzeReactComponentsTool(server);
 }
