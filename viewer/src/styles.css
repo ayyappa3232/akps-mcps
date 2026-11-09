@@ -1504,7 +1504,7 @@ body,
 .developer-tools-options {
   display: grid;
   gap: 4px;
-  max-height: 310px;
+  max-height: min(400px, 60vh);
   overflow-y: auto;
   margin-top: 7px;
   padding-right: 2px;

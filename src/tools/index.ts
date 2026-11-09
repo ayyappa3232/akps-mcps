@@ -13,6 +13,7 @@ import { registerAnalyzeCodeQualityTool } from "./analyzeCodeQuality.js";
 import { registerAnalyzeDeadCodeTool } from "./analyzeDeadCode.js";
 import { registerAnalyzeApiEndpointsTool } from "./analyzeApiEndpoints.js";
 import { registerAnalyzeCircularDependenciesTool } from "./analyzeCircularDependencies.js";
+import { registerDetectDuplicateCodeTool } from "./detectDuplicateCode.js";
 
 export function registerAllTools(server: McpServer): void {
   registerHelloDeveloperTool(server);
@@ -28,4 +29,5 @@ export function registerAllTools(server: McpServer): void {
   registerAnalyzeDeadCodeTool(server);
   registerAnalyzeApiEndpointsTool(server);
   registerAnalyzeCircularDependenciesTool(server);
+  registerDetectDuplicateCodeTool(server);
 }

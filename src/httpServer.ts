@@ -18,6 +18,7 @@ import { analyzeSecurity } from "./tools/analyzeSecurity.js";
 import { analyzeTestCoverage } from "./tools/analyzeTestCoverage.js";
 import { analyzeDependencyHealth } from "./tools/analyzeDependencyHealth.js";
 import { analyzeCircularDependencies } from "./tools/analyzeCircularDependencies.js";
+import { detectDuplicateCode } from "./tools/detectDuplicateCode.js";
 
 const app = express();
 const PORT = 4174;
@@ -858,6 +859,113 @@ app.post("/api/analyze-circular-dependencies", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to analyze circular dependencies.",
+    });
+  }
+});
+
+app.post("/api/detect-duplicate-code", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      filePath,
+      minTokens = 50,
+      minLines = 5,
+      matchMode = "renamed",
+      includeTests = false,
+    } = req.body ?? {};
+
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+
+    if (filePath !== undefined && typeof filePath !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be a string when provided.",
+      });
+    }
+
+    if (
+      typeof minTokens !== "number" ||
+      !Number.isInteger(minTokens) ||
+      minTokens < 20 ||
+      minTokens > 500
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "minTokens must be an integer between 20 and 500.",
+      });
+    }
+
+    if (
+      typeof minLines !== "number" ||
+      !Number.isInteger(minLines) ||
+      minLines < 2 ||
+      minLines > 100
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "minLines must be an integer between 2 and 100.",
+      });
+    }
+
+    if (!["exact", "renamed", "structural"].includes(matchMode)) {
+      return res.status(400).json({
+        success: false,
+        error: "matchMode must be one of exact, renamed, or structural.",
+      });
+    }
+
+    if (typeof includeTests !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeTests must be a boolean.",
+      });
+    }
+
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+
+    if (
+      typeof filePath === "string" &&
+      (path.isAbsolute(filePath) ||
+        filePath.split(/[\\/]/).includes(".."))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be relative to projectPath.",
+      });
+    }
+
+    const report = await detectDuplicateCode(
+      projectPath,
+      typeof filePath === "string" && filePath.trim()
+        ? filePath.trim()
+        : undefined,
+      { minTokens, minLines, matchMode, includeTests },
+    );
+
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "detect_duplicate_code",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to detect duplicate code.",
     });
   }
 });

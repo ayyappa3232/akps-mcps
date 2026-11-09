@@ -23,6 +23,7 @@ import AnalyzeSecurity from "./modules/security/AnalyzeSecurity";
 import AnalyzeTestCoverage from "./modules/testCoverage/AnalyzeTestCoverage";
 import AnalyzeDependencyHealth from "./modules/dependenciesHealth/AnalyzeDependencyHealth";
 import AnalyzeCircularDependencies from "./modules/circularDependencies/AnalyzeCircularDependencies";
+import DetectDuplicateCode from "./modules/duplicateCodeDetector/DetectDuplicateCode";
 
 
 const defaultProjectPath =
@@ -205,7 +206,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode";
   label: string;
   icon: string;
 };
@@ -219,7 +220,8 @@ const developerTools: DeveloperTool[] = [
   { value: "security", label: "Security", icon: "🔒" },
   { value: "testCoverage", label: "Test Coverage", icon: "🧪" },
   { value: "dependencyHealth", label: "Dependency Health", icon: "📦" },
-  { value: "circularDependencies", label: "Circular Dependencies", icon: "⟳" }
+  { value: "circularDependencies", label: "Circular Dependencies", icon: "⟳" },
+  { value: "duplicateCode", label: "Duplicate Code", icon: "⧉" }
 ];
 
 function DeveloperToolsSelect({
@@ -485,7 +487,8 @@ export default function App() {
       "security" |
       "testCoverage" |
       "dependencyHealth" |
-      "circularDependencies"
+      "circularDependencies" |
+      "duplicateCode"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -886,7 +889,8 @@ export default function App() {
                 activeView === "security" ||
                 activeView === "testCoverage" ||
                 activeView === "dependencyHealth" ||
-                activeView === "circularDependencies"
+                activeView === "circularDependencies" ||
+                activeView === "duplicateCode"
                 ? activeView
                 : null
             }
@@ -917,7 +921,9 @@ export default function App() {
                                 ? "Dependency Health Analyzer"
                                 : activeView === "circularDependencies"
                                   ? "Circular Dependency Analyzer"
-                                  : "API Explorer"}
+                                  : activeView === "duplicateCode"
+                                    ? "Duplicate Code Detector"
+                                    : "API Explorer"}
             </h2>
 
             <p>
@@ -941,7 +947,9 @@ export default function App() {
                                 ? "Check missing, unused, duplicate, and outdated package dependencies."
                                 : activeView === "circularDependencies"
                                   ? "Find import loops between files and get a ready-made patch to break each one."
-                                  : "Explore HTTP and Firebase backend communication used by your application."}
+                                  : activeView === "duplicateCode"
+                                    ? "Find copied code blocks, compare the copies side by side, and see where to merge them."
+                                    : "Explore HTTP and Firebase backend communication used by your application."}
             </p>
           </div>
 
@@ -1200,6 +1208,13 @@ export default function App() {
 
         {activeView === "circularDependencies" && (
           <AnalyzeCircularDependencies
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "duplicateCode" && (
+          <DetectDuplicateCode
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />
