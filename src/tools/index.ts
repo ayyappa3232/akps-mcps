@@ -12,6 +12,7 @@ import { registerAnalyzeChangeImpactTool } from "./analyzeChangeImpact.js";
 import { registerAnalyzeCodeQualityTool } from "./analyzeCodeQuality.js";
 import { registerAnalyzeDeadCodeTool } from "./analyzeDeadCode.js";
 import { registerAnalyzeApiEndpointsTool } from "./analyzeApiEndpoints.js";
+import { registerAnalyzeCircularDependenciesTool } from "./analyzeCircularDependencies.js";
 
 export function registerAllTools(server: McpServer): void {
   registerHelloDeveloperTool(server);
@@ -26,4 +27,5 @@ export function registerAllTools(server: McpServer): void {
   registerAnalyzeCodeQualityTool(server);
   registerAnalyzeDeadCodeTool(server);
   registerAnalyzeApiEndpointsTool(server);
+  registerAnalyzeCircularDependenciesTool(server);
 }

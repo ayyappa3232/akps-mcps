@@ -17,6 +17,7 @@ import {
 import { analyzeSecurity } from "./tools/analyzeSecurity.js";
 import { analyzeTestCoverage } from "./tools/analyzeTestCoverage.js";
 import { analyzeDependencyHealth } from "./tools/analyzeDependencyHealth.js";
+import { analyzeCircularDependencies } from "./tools/analyzeCircularDependencies.js";
 
 const app = express();
 const PORT = 4174;
@@ -796,6 +797,67 @@ app.post("/api/analyze-dependency-health", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to analyze dependency health.",
+    });
+  }
+});
+
+app.post("/api/analyze-circular-dependencies", async (req, res) => {
+  try {
+    let { projectPath, filePath } = req.body ?? {};
+
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+
+    if (filePath !== undefined && typeof filePath !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be a string when provided.",
+      });
+    }
+
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+
+    if (
+      typeof filePath === "string" &&
+      (path.isAbsolute(filePath) ||
+        filePath.split(/[\\/]/).includes(".."))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be relative to projectPath.",
+      });
+    }
+
+    const report = await analyzeCircularDependencies(
+      projectPath,
+      typeof filePath === "string" && filePath.trim()
+        ? filePath.trim()
+        : undefined,
+    );
+
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "analyze_circular_dependencies",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze circular dependencies.",
     });
   }
 });
