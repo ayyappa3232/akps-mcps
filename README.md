@@ -1746,7 +1746,7 @@ Use this section as the project checklist. Update the status from `[ ]` to `[x]`
 
 - [x] Code Quality Analyzer — `analyzeCodeQuality.ts`
 - [x] Dead Code Detector — `analyzeDeadCode.ts`
-- [ ] Duplicate Code Detector - 
+- [ ] Duplicate Code Detector - `detectDuplicateCode.ts`
 - [ ] Circular Dependency Analyzer - `analyzeCircularDependencies.ts`
 
 **Phase 1: 2/4 complete**
