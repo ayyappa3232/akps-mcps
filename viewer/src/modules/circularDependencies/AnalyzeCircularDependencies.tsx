@@ -3,13 +3,16 @@ import {
   AlertTriangle,
   ArrowDown,
   Braces,
+  Check,
   CheckCircle2,
   Clock,
+  Copy,
   FileCode2,
   Layers,
   Repeat,
   Scissors,
   Search,
+  Wrench,
   XCircle,
 } from "lucide-react";
 import "./analyze-circular-dependencies.css";
@@ -35,6 +38,32 @@ interface CycleWeakestLink {
   reason: string;
 }
 
+type FixStrategy =
+  | "type-only-import"
+  | "barrel-direct-import"
+  | "extract-shared-module"
+  | "remove-self-import"
+  | "no-change-needed"
+  | "manual";
+
+interface FixChange {
+  filePath: string;
+  action: "modify" | "create";
+  description: string;
+  diff: string;
+}
+
+interface CycleFix {
+  strategy: FixStrategy;
+  confidence: "high" | "medium" | "low";
+  title: string;
+  summary: string;
+  steps: string[];
+  changes: FixChange[];
+  patch: string;
+  caveats: string[];
+}
+
 interface CircularDependencyCycle {
   id: string;
   severity: CycleSeverity;
@@ -50,6 +79,7 @@ interface CircularDependencyCycle {
   groupSize: number;
   involvesBarrel: boolean;
   weakestLink: CycleWeakestLink;
+  fix?: CycleFix;
 }
 
 interface EntangledFile {
@@ -308,6 +338,154 @@ function CycleRing({ cycle }: { cycle: CircularDependencyCycle }) {
         );
       })}
     </svg>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Ready-made fix                                                            */
+/* -------------------------------------------------------------------------- */
+
+const STRATEGY_LABEL: Record<FixStrategy, string> = {
+  "type-only-import": "Type-only import",
+  "barrel-direct-import": "Skip the barrel",
+  "extract-shared-module": "Extract shared module",
+  "remove-self-import": "Remove self-import",
+  "no-change-needed": "No change needed",
+  manual: "Manual refactor",
+};
+
+function DiffView({ diff }: { diff: string }) {
+  return (
+    <pre className="circular-diff">
+      {diff.split("\n").map((rawLine, index) => {
+        const line = rawLine.replace(/\r$/, "");
+        const tone = line.startsWith("@@")
+          ? "hunk"
+          : line.startsWith("+")
+            ? "add"
+            : line.startsWith("-")
+              ? "del"
+              : "";
+
+        return (
+          <span key={index} className={tone}>
+            {line || " "}
+            {"\n"}
+          </span>
+        );
+      })}
+    </pre>
+  );
+}
+
+function FixPanel({ cycle }: { cycle: CircularDependencyCycle }) {
+  const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const fix = cycle.fix;
+
+  if (!fix) {
+    return (
+      <section className="circular-detail-box circular-recommendation">
+        <h4>Recommended fix</h4>
+        <p>{cycle.recommendation}</p>
+        <p className="circular-weak-reason">
+          A ready-made patch is generated for the highest-risk cycles. Enter a
+          focus file that is part of this loop and analyze again to get one for
+          this cycle.
+        </p>
+      </section>
+    );
+  }
+
+  async function copyPatch() {
+    try {
+      await navigator.clipboard.writeText(fix!.patch);
+      setCopied(true);
+      setCopyFailed(false);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopyFailed(true);
+    }
+  }
+
+  return (
+    <section className="circular-detail-box circular-recommendation circular-fix">
+      <div className="circular-fix-head">
+        <h4>
+          <Wrench size={14} /> Ready-made fix
+        </h4>
+        <div className="circular-fix-badges">
+          <span className="circular-kind-badge">
+            {STRATEGY_LABEL[fix.strategy]}
+          </span>
+          <span className={`circular-confidence confidence-${fix.confidence}`}>
+            {fix.confidence} confidence
+          </span>
+        </div>
+      </div>
+
+      <p className="circular-fix-title">{fix.title}</p>
+      <p>{fix.summary}</p>
+
+      {fix.strategy === "manual" && (
+        <div className="circular-weak-link">
+          <Scissors size={14} />
+          <span>
+            {shortName(cycle.weakestLink.from)} →{" "}
+            {shortName(cycle.weakestLink.to)}
+            <em> · line {cycle.weakestLink.line}</em>
+          </span>
+        </div>
+      )}
+
+      <ol className="circular-fix-steps">
+        {fix.steps.map((step, index) => (
+          <li key={index}>{step}</li>
+        ))}
+      </ol>
+
+      {fix.changes.map((change) => (
+        <div className="circular-change" key={change.filePath}>
+          <div className="circular-change-head">
+            <span
+              className={`circular-change-action action-${change.action}`}
+            >
+              {change.action === "create" ? "New file" : "Modify"}
+            </span>
+            <span className="circular-change-path" title={change.filePath}>
+              {change.filePath}
+            </span>
+          </div>
+          <p className="circular-change-desc">{change.description}</p>
+          <DiffView diff={change.diff} />
+        </div>
+      ))}
+
+      {fix.patch && (
+        <div className="circular-patch-actions">
+          <button type="button" onClick={copyPatch}>
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+            {copied ? "Copied" : "Copy patch"}
+          </button>
+          <code>git apply --check fix.patch &amp;&amp; git apply fix.patch</code>
+        </div>
+      )}
+
+      {copyFailed && (
+        <p className="circular-weak-reason">
+          The browser blocked clipboard access. Select the diffs above and copy
+          them manually.
+        </p>
+      )}
+
+      {fix.caveats.length > 0 && (
+        <ul className="circular-caveats">
+          {fix.caveats.map((caveat, index) => (
+            <li key={index}>{caveat}</li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -715,21 +893,7 @@ export default function AnalyzeCircularDependencies({
                       <p>{selectedCycle.description}</p>
                     </section>
 
-                    <section className="circular-detail-box circular-recommendation">
-                      <h4>Recommended fix</h4>
-                      <p>{selectedCycle.recommendation}</p>
-                      <div className="circular-weak-link">
-                        <Scissors size={14} />
-                        <span>
-                          {shortName(selectedCycle.weakestLink.from)} →{" "}
-                          {shortName(selectedCycle.weakestLink.to)}
-                          <em> · line {selectedCycle.weakestLink.line}</em>
-                        </span>
-                      </div>
-                      <p className="circular-weak-reason">
-                        {selectedCycle.weakestLink.reason}
-                      </p>
-                    </section>
+                    <FixPanel key={selectedCycle.id} cycle={selectedCycle} />
 
                     <section className="circular-detail-box">
                       <h4>Import chain</h4>

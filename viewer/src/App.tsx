@@ -219,7 +219,7 @@ const developerTools: DeveloperTool[] = [
   { value: "security", label: "Security", icon: "🔒" },
   { value: "testCoverage", label: "Test Coverage", icon: "🧪" },
   { value: "dependencyHealth", label: "Dependency Health", icon: "📦" },
-  { value: "circularDependencies", label: "Circular Dependencies", icon: "🔄" }
+  { value: "circularDependencies", label: "Circular Dependencies", icon: "⟳" }
 ];
 
 function DeveloperToolsSelect({
@@ -909,7 +909,15 @@ export default function App() {
                         ? "Code Quality Analyzer"
                         : activeView === "deadCode"
                           ? "Dead Code Analyzer"
-                          : "API Explorer"}
+                          : activeView === "security"
+                            ? "Security & Vulnerability Analyzer"
+                            : activeView === "testCoverage"
+                              ? "Test Coverage Analyzer"
+                              : activeView === "dependencyHealth"
+                                ? "Dependency Health Analyzer"
+                                : activeView === "circularDependencies"
+                                  ? "Circular Dependency Analyzer"
+                                  : "API Explorer"}
             </h2>
 
             <p>
@@ -925,7 +933,15 @@ export default function App() {
                         ? "Assess complexity, maintainability, React activity, and structural hotspots before you refactor."
                         : activeView === "deadCode"
                           ? "Find potentially unused declarations and review them before cleanup or removal."
-                          : "Explore HTTP and Firebase backend communication used by your application."}
+                          : activeView === "security"
+                            ? "Find insecure patterns, exposed secrets, and risky configuration."
+                            : activeView === "testCoverage"
+                              ? "See which source files and functions are covered by tests."
+                              : activeView === "dependencyHealth"
+                                ? "Check missing, unused, duplicate, and outdated package dependencies."
+                                : activeView === "circularDependencies"
+                                  ? "Find import loops between files and get a ready-made patch to break each one."
+                                  : "Explore HTTP and Firebase backend communication used by your application."}
             </p>
           </div>
 

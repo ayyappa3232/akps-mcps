@@ -46,6 +46,34 @@ interface CycleWeakestLink {
   reason: string;
 }
 
+type FixStrategy =
+  | "type-only-import"
+  | "barrel-direct-import"
+  | "extract-shared-module"
+  | "remove-self-import"
+  | "no-change-needed"
+  | "manual";
+
+interface FixChange {
+  filePath: string;
+  action: "modify" | "create";
+  description: string;
+  /** Unified-diff hunks (no file header) for display. */
+  diff: string;
+}
+
+interface CycleFix {
+  strategy: FixStrategy;
+  confidence: "high" | "medium" | "low";
+  title: string;
+  summary: string;
+  steps: string[];
+  changes: FixChange[];
+  /** Complete patch, ready for `git apply`. Empty when no change is proposed. */
+  patch: string;
+  caveats: string[];
+}
+
 interface CircularDependencyCycle {
   id: string;
   severity: CycleSeverity;
@@ -63,6 +91,8 @@ interface CircularDependencyCycle {
   groupSize: number;
   involvesBarrel: boolean;
   weakestLink: CycleWeakestLink;
+  /** Concrete, applyable fix. Generated for the highest-ranked cycles. */
+  fix?: CycleFix;
 }
 
 interface CycleGroup {
@@ -845,13 +875,16 @@ function severityFor(kind: CycleKind, score: number): CycleSeverity {
   return "medium";
 }
 
-function pickWeakestLink(edges: CycleEdge[]): CycleWeakestLink {
-  const cost = (edge: CycleEdge) =>
-    edge.kind === "re-export" ? 50 + edge.bindings : Math.max(1, edge.bindings);
+function edgeCost(edge: CycleEdge): number {
+  return edge.kind === "re-export"
+    ? 50 + edge.bindings
+    : Math.max(1, edge.bindings);
+}
 
+function pickWeakestLink(edges: CycleEdge[]): CycleWeakestLink {
   let best = edges[0];
   for (const edge of edges) {
-    if (cost(edge) < cost(best)) best = edge;
+    if (edgeCost(edge) < edgeCost(best)) best = edge;
   }
 
   let reason: string;
@@ -932,6 +965,1383 @@ function buildRecommendation(
   }
 
   return `Break the loop at its weakest link, ${link}. Move shared code into a leaf module that imports nothing from this loop, or invert the dependency by passing the value in as a parameter or callback.`;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Fix generation                                                            */
+/* -------------------------------------------------------------------------- */
+
+const MAX_FIX_CYCLES = 40;
+const MAX_MOVED_DECLARATIONS = 15;
+const MAX_MOVED_LINES = 250;
+
+type FixAttempt = { fix: CycleFix } | { reason: string };
+
+interface LineEdit {
+  /** 1-based line. The edit replaces `deleteCount` lines starting here. */
+  start: number;
+  deleteCount: number;
+  insert: string[];
+}
+
+interface ParsedFile {
+  rel: string;
+  abs: string;
+  text: string;
+  sf: ts.SourceFile;
+  lines: string[];
+  endsWithNewline: boolean;
+  cr: string;
+}
+
+interface FixContext {
+  root: string;
+  resolve: (fromFile: string, specifier: string) => string | undefined;
+  relative: (absolute: string) => string;
+  runtimeAdjacency: Map<string, string[]>;
+  knownFiles: Set<string>;
+  cache: Map<string, ParsedFile | null>;
+}
+
+interface TopDecl {
+  names: string[];
+  node: ts.Statement;
+  kind:
+    | "function"
+    | "class"
+    | "const"
+    | "mutable"
+    | "interface"
+    | "type"
+    | "enum"
+    | "other";
+  exported: boolean;
+  isDefault: boolean;
+  typeLike: boolean;
+}
+
+interface ImportLocal {
+  decl: ts.ImportDeclaration;
+  kind: "default" | "namespace" | "named";
+  element?: ts.ImportSpecifier;
+}
+
+function loadParsed(ctx: FixContext, rel: string): ParsedFile | undefined {
+  if (ctx.cache.has(rel)) return ctx.cache.get(rel) ?? undefined;
+
+  let parsed: ParsedFile | null = null;
+
+  try {
+    const abs = path.join(ctx.root, rel);
+    const text = fs.readFileSync(abs, "utf8");
+    const endsWithNewline = text.endsWith("\n");
+    const lines = text.split("\n");
+    if (endsWithNewline) lines.pop();
+
+    parsed = {
+      rel,
+      abs,
+      text,
+      sf: ts.createSourceFile(abs, text, ts.ScriptTarget.Latest, true),
+      lines,
+      endsWithNewline,
+      cr: text.includes("\r\n") ? "\r" : "",
+    };
+  } catch {
+    parsed = null;
+  }
+
+  ctx.cache.set(rel, parsed);
+  return parsed ?? undefined;
+}
+
+function lineAt(pf: ParsedFile, position: number): number {
+  return pf.sf.getLineAndCharacterOfPosition(position).line + 1;
+}
+
+function nodeLines(
+  pf: ParsedFile,
+  node: ts.Node,
+  includeDoc = false,
+): { start: number; end: number } {
+  return {
+    start: lineAt(pf, node.getStart(pf.sf, includeDoc)),
+    end: lineAt(pf, node.getEnd()),
+  };
+}
+
+function modifiersOf(node: ts.Node): readonly ts.Modifier[] {
+  return ts.canHaveModifiers(node) ? (ts.getModifiers(node) ?? []) : [];
+}
+
+function relativeSpecifier(
+  fromRel: string,
+  targetRel: string,
+  jsExtension: boolean,
+): string {
+  let specifier = path.posix.relative(path.posix.dirname(fromRel), targetRel);
+  if (!specifier.startsWith(".")) specifier = `./${specifier}`;
+
+  const extension = path.posix.extname(specifier);
+  const mapped: Record<string, string> = {
+    ".ts": ".js",
+    ".tsx": ".js",
+    ".mts": ".mjs",
+    ".cts": ".cjs",
+    ".js": ".js",
+    ".jsx": ".jsx",
+    ".mjs": ".mjs",
+    ".cjs": ".cjs",
+  };
+
+  if (mapped[extension]) {
+    specifier = specifier.slice(0, -extension.length);
+    if (jsExtension) specifier += mapped[extension];
+  }
+
+  return specifier;
+}
+
+function canReach(
+  adjacency: Map<string, string[]>,
+  start: string,
+  targets: Set<string>,
+): boolean {
+  if (targets.has(start)) return true;
+
+  const seen = new Set<string>([start]);
+  const queue = [start];
+
+  for (let head = 0; head < queue.length; head++) {
+    for (const next of adjacency.get(queue[head]) ?? []) {
+      if (targets.has(next)) return true;
+      if (!seen.has(next)) {
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+  }
+
+  return false;
+}
+
+/* ---- Diff / patch building ---- */
+
+function buildHunks(pf: ParsedFile, edits: LineEdit[]): string {
+  const CONTEXT = 3;
+  const sorted = [...edits].sort(
+    (a, b) => a.start - b.start || a.deleteCount - b.deleteCount,
+  );
+
+  for (let index = 1; index < sorted.length; index++) {
+    const previous = sorted[index - 1];
+    if (sorted[index].start < previous.start + previous.deleteCount) {
+      throw new Error("Overlapping edits while building a patch.");
+    }
+  }
+
+  const groups: LineEdit[][] = [];
+  for (const edit of sorted) {
+    const group = groups[groups.length - 1];
+    if (group) {
+      const previous = group[group.length - 1];
+      if (edit.start - (previous.start + previous.deleteCount) <= CONTEXT * 2) {
+        group.push(edit);
+        continue;
+      }
+    }
+    groups.push([edit]);
+  }
+
+  const total = pf.lines.length;
+  const noNewlineMarker = "\\ No newline at end of file";
+  const out: string[] = [];
+  let delta = 0;
+
+  const pushOld = (prefix: string, lineNumber: number) => {
+    out.push(prefix + pf.lines[lineNumber - 1]);
+    if (!pf.endsWithNewline && lineNumber === total) out.push(noNewlineMarker);
+  };
+
+  for (const group of groups) {
+    const first = group[0];
+    const last = group[group.length - 1];
+    const oldStart = Math.max(1, first.start - CONTEXT);
+    const oldEnd = Math.min(total, last.start + last.deleteCount - 1 + CONTEXT);
+    const deltaBefore = delta;
+    let oldCount = 0;
+    let newCount = 0;
+    let line = oldStart;
+
+    const header = out.length;
+    out.push("");
+
+    for (const edit of group) {
+      while (line < edit.start) {
+        pushOld(" ", line);
+        line++;
+        oldCount++;
+        newCount++;
+      }
+      for (let k = 0; k < edit.deleteCount; k++) {
+        pushOld("-", edit.start + k);
+        oldCount++;
+      }
+      for (const inserted of edit.insert) {
+        out.push(`+${inserted}${pf.cr}`);
+        newCount++;
+      }
+      line = edit.start + edit.deleteCount;
+      delta += edit.insert.length - edit.deleteCount;
+    }
+
+    while (line <= oldEnd) {
+      pushOld(" ", line);
+      line++;
+      oldCount++;
+      newCount++;
+    }
+
+    out[header] = `@@ -${oldStart},${oldCount} +${oldStart + deltaBefore},${newCount} @@`;
+  }
+
+  return out.join("\n");
+}
+
+function modifyChange(
+  pf: ParsedFile,
+  edits: LineEdit[],
+  description: string,
+): { change: FixChange; patch: string } {
+  const hunks = buildHunks(pf, edits);
+
+  return {
+    change: {
+      filePath: pf.rel,
+      action: "modify",
+      description,
+      diff: hunks,
+    },
+    patch: `diff --git a/${pf.rel} b/${pf.rel}\n--- a/${pf.rel}\n+++ b/${pf.rel}\n${hunks}\n`,
+  };
+}
+
+function createChange(
+  rel: string,
+  lines: string[],
+  description: string,
+  cr: string,
+): { change: FixChange; patch: string } {
+  const body = lines.map((line) => `+${line}${cr}`).join("\n");
+
+  return {
+    change: {
+      filePath: rel,
+      action: "create",
+      description,
+      diff: body,
+    },
+    patch: `diff --git a/${rel} b/${rel}\nnew file mode 100644\n--- /dev/null\n+++ b/${rel}\n@@ -0,0 +1,${lines.length} @@\n${body}\n`,
+  };
+}
+
+function assembleFix(
+  fields: Omit<CycleFix, "changes" | "patch">,
+  parts: Array<{ change: FixChange; patch: string }>,
+): CycleFix {
+  const crlf = parts.some((part) => part.patch.includes("\r"));
+
+  return {
+    ...fields,
+    caveats: crlf
+      ? [
+          ...fields.caveats,
+          "This file uses CRLF line endings. If `git apply` complains, run it with --ignore-whitespace.",
+        ]
+      : fields.caveats,
+    changes: parts.map((part) => part.change),
+    patch: parts.map((part) => part.patch).join(""),
+  };
+}
+
+/* ---- AST helpers ---- */
+
+function collectTopDecls(pf: ParsedFile): TopDecl[] {
+  const decls: TopDecl[] = [];
+
+  for (const statement of pf.sf.statements) {
+    const modifiers = modifiersOf(statement);
+    const exported = modifiers.some(
+      (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+    );
+    const isDefault = modifiers.some(
+      (modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword,
+    );
+
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      decls.push({
+        names: [statement.name.text],
+        node: statement,
+        kind: "function",
+        exported,
+        isDefault,
+        typeLike: false,
+      });
+    } else if (ts.isClassDeclaration(statement) && statement.name) {
+      decls.push({
+        names: [statement.name.text],
+        node: statement,
+        kind: "class",
+        exported,
+        isDefault,
+        typeLike: false,
+      });
+    } else if (ts.isInterfaceDeclaration(statement)) {
+      decls.push({
+        names: [statement.name.text],
+        node: statement,
+        kind: "interface",
+        exported,
+        isDefault,
+        typeLike: true,
+      });
+    } else if (ts.isTypeAliasDeclaration(statement)) {
+      decls.push({
+        names: [statement.name.text],
+        node: statement,
+        kind: "type",
+        exported,
+        isDefault,
+        typeLike: true,
+      });
+    } else if (ts.isEnumDeclaration(statement)) {
+      decls.push({
+        names: [statement.name.text],
+        node: statement,
+        kind: "enum",
+        exported,
+        isDefault,
+        typeLike: false,
+      });
+    } else if (ts.isVariableStatement(statement)) {
+      const names: string[] = [];
+      let simple = true;
+
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name)) names.push(declaration.name.text);
+        else simple = false;
+      }
+
+      const isConst = (statement.declarationList.flags & ts.NodeFlags.Const) !== 0;
+
+      decls.push({
+        names,
+        node: statement,
+        kind: !simple ? "other" : isConst ? "const" : "mutable",
+        exported,
+        isDefault,
+        typeLike: false,
+      });
+    }
+  }
+
+  return decls;
+}
+
+function collectImportLocals(pf: ParsedFile): Map<string, ImportLocal> {
+  const locals = new Map<string, ImportLocal>();
+
+  for (const statement of pf.sf.statements) {
+    if (!ts.isImportDeclaration(statement) || !statement.importClause) continue;
+
+    const clause = statement.importClause;
+    if (clause.name) {
+      locals.set(clause.name.text, { decl: statement, kind: "default" });
+    }
+
+    const bindings = clause.namedBindings;
+    if (bindings && ts.isNamespaceImport(bindings)) {
+      locals.set(bindings.name.text, { decl: statement, kind: "namespace" });
+    } else if (bindings) {
+      for (const element of bindings.elements) {
+        locals.set(element.name.text, {
+          decl: statement,
+          kind: "named",
+          element,
+        });
+      }
+    }
+  }
+
+  return locals;
+}
+
+function isReferenceIdentifier(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  if (!parent) return false;
+
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
+  if (ts.isQualifiedName(parent) && parent.right === node) return false;
+
+  if (
+    (ts.isPropertyAssignment(parent) ||
+      ts.isPropertyDeclaration(parent) ||
+      ts.isPropertySignature(parent) ||
+      ts.isMethodDeclaration(parent) ||
+      ts.isMethodSignature(parent) ||
+      ts.isGetAccessorDeclaration(parent) ||
+      ts.isSetAccessorDeclaration(parent) ||
+      ts.isEnumMember(parent) ||
+      ts.isVariableDeclaration(parent) ||
+      ts.isParameter(parent) ||
+      ts.isFunctionDeclaration(parent) ||
+      ts.isFunctionExpression(parent) ||
+      ts.isClassDeclaration(parent) ||
+      ts.isInterfaceDeclaration(parent) ||
+      ts.isTypeAliasDeclaration(parent) ||
+      ts.isTypeParameterDeclaration(parent) ||
+      ts.isEnumDeclaration(parent) ||
+      ts.isJsxAttribute(parent)) &&
+    (parent as { name?: ts.Node }).name === node
+  ) {
+    return false;
+  }
+
+  if (ts.isBindingElement(parent) && parent.propertyName === node) return false;
+
+  if (
+    ts.isImportSpecifier(parent) ||
+    ts.isImportClause(parent) ||
+    ts.isNamespaceImport(parent)
+  ) {
+    return false;
+  }
+
+  if (ts.isExportSpecifier(parent)) {
+    const declaration = parent.parent.parent;
+    return !declaration.moduleSpecifier;
+  }
+
+  return true;
+}
+
+function isInTypePosition(node: ts.Node): boolean {
+  for (let current = node.parent; current; current = current.parent) {
+    if (ts.isExpressionWithTypeArguments(current)) {
+      const clause = current.parent;
+      return (
+        ts.isHeritageClause(clause) &&
+        (clause.token === ts.SyntaxKind.ImplementsKeyword ||
+          ts.isInterfaceDeclaration(clause.parent))
+      );
+    }
+
+    if (ts.isTypeNode(current)) return true;
+    if (ts.isStatement(current) || ts.isSourceFile(current)) return false;
+  }
+
+  return false;
+}
+
+function hasValueUsage(pf: ParsedFile, local: string, skip: ts.Node): boolean {
+  let found = false;
+
+  const visit = (node: ts.Node) => {
+    if (found || node === skip) return;
+
+    if (
+      ts.isIdentifier(node) &&
+      node.text === local &&
+      isReferenceIdentifier(node) &&
+      !isInTypePosition(node)
+    ) {
+      found = true;
+      return;
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(pf.sf);
+  return found;
+}
+
+function referencedIdentifiers(root: ts.Node): string[] {
+  const names: string[] = [];
+
+  const visit = (node: ts.Node) => {
+    if (ts.isIdentifier(node) && isReferenceIdentifier(node)) {
+      names.push(node.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(root);
+  return names;
+}
+
+function importDeclarationsTo(
+  ctx: FixContext,
+  pf: ParsedFile,
+  targetRel: string,
+): ts.ImportDeclaration[] {
+  const declarations: ts.ImportDeclaration[] = [];
+
+  for (const statement of pf.sf.statements) {
+    if (
+      ts.isImportDeclaration(statement) &&
+      ts.isStringLiteral(statement.moduleSpecifier)
+    ) {
+      const target = ctx.resolve(
+        pf.abs,
+        statement.moduleSpecifier.text.split("?")[0],
+      );
+
+      if (target && ctx.relative(target) === targetRel) {
+        declarations.push(statement);
+      }
+    }
+  }
+
+  return declarations;
+}
+
+/** True when `pf` still reaches `targetRel` at load time outside `handledLines`. */
+function hasOtherRuntimeReferences(
+  ctx: FixContext,
+  pf: ParsedFile,
+  targetRel: string,
+  handledLines: Set<number>,
+): boolean {
+  for (const occurrence of extractImports(pf.sf)) {
+    if (occurrenceMode(occurrence) !== "runtime") continue;
+
+    const target = ctx.resolve(pf.abs, occurrence.specifier.split("?")[0]);
+    if (
+      target &&
+      ctx.relative(target) === targetRel &&
+      !handledLines.has(occurrence.line)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function findDefiningFile(
+  ctx: FixContext,
+  rel: string,
+  name: string,
+  depth = 0,
+  visited = new Set<string>(),
+): string | undefined {
+  const key = `${rel}\0${name}`;
+  if (depth > 8 || visited.has(key)) return undefined;
+  visited.add(key);
+
+  const pf = loadParsed(ctx, rel);
+  if (!pf) return undefined;
+
+  const decls = collectTopDecls(pf);
+  if (decls.some((decl) => decl.exported && decl.names.includes(name))) {
+    return rel;
+  }
+
+  for (const statement of pf.sf.statements) {
+    if (!ts.isExportDeclaration(statement)) continue;
+
+    if (!statement.moduleSpecifier) {
+      const clause = statement.exportClause;
+      if (!clause || !ts.isNamedExports(clause)) continue;
+
+      for (const element of clause.elements) {
+        if (element.name.text !== name) continue;
+        const original = element.propertyName?.text ?? element.name.text;
+
+        if (decls.some((decl) => decl.names.includes(original))) return rel;
+
+        const imported = collectImportLocals(pf).get(original);
+        if (imported?.element && ts.isStringLiteral(imported.decl.moduleSpecifier)) {
+          const target = ctx.resolve(pf.abs, imported.decl.moduleSpecifier.text);
+          if (target) {
+            return findDefiningFile(
+              ctx,
+              ctx.relative(target),
+              imported.element.propertyName?.text ?? imported.element.name.text,
+              depth + 1,
+              visited,
+            );
+          }
+        }
+      }
+      continue;
+    }
+
+    if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+
+    const target = ctx.resolve(pf.abs, statement.moduleSpecifier.text);
+    if (!target) continue;
+    const targetRel = ctx.relative(target);
+
+    if (!statement.exportClause) {
+      const found = findDefiningFile(ctx, targetRel, name, depth + 1, visited);
+      if (found) return found;
+    } else if (ts.isNamedExports(statement.exportClause)) {
+      for (const element of statement.exportClause.elements) {
+        if (element.name.text === name) {
+          return findDefiningFile(
+            ctx,
+            targetRel,
+            element.propertyName?.text ?? name,
+            depth + 1,
+            visited,
+          );
+        }
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/* ---- Strategy 1: import type ---- */
+
+function tryTypeOnlyFix(
+  ctx: FixContext,
+  _cycle: CircularDependencyCycle,
+  edge: CycleEdge,
+): FixAttempt {
+  const pf = loadParsed(ctx, edge.from);
+  if (!pf) return { reason: "" };
+
+  const declarations = importDeclarationsTo(ctx, pf, edge.to);
+  if (declarations.length === 0) return { reason: "" };
+
+  const edits: LineEdit[] = [];
+  const handledLines = new Set<number>();
+  const converted: string[] = [];
+
+  for (const decl of declarations) {
+    const clause = decl.importClause;
+    if (!clause) {
+      return {
+        reason: `${edge.from} imports ${edge.to} only for its side effects, which must stay at load time.`,
+      };
+    }
+    if (clause.isTypeOnly) continue;
+    if (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
+      return {
+        reason: `${edge.from} uses a namespace import of ${edge.to}, which cannot be made type-only automatically.`,
+      };
+    }
+
+    const locals: string[] = [];
+    if (clause.name) locals.push(clause.name.text);
+    if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+      for (const element of clause.namedBindings.elements) {
+        if (!element.isTypeOnly) locals.push(element.name.text);
+      }
+    }
+
+    for (const local of locals) {
+      if (hasValueUsage(pf, local, decl)) {
+        return {
+          reason: `"${local}" is used as a value in ${edge.from}, so that import has to stay at runtime.`,
+        };
+      }
+    }
+
+    const specifier = decl.moduleSpecifier.getText(pf.sf);
+    const semi = decl.getText(pf.sf).trimEnd().endsWith(";") ? ";" : "";
+    const named =
+      clause.namedBindings && ts.isNamedImports(clause.namedBindings)
+        ? clause.namedBindings.elements.map((element) =>
+            element.getText(pf.sf).replace(/^type\s+/, ""),
+          )
+        : [];
+
+    const lines: string[] = [];
+    if (clause.name) {
+      lines.push(`import type ${clause.name.text} from ${specifier}${semi}`);
+    }
+    if (named.length > 0) {
+      lines.push(`import type { ${named.join(", ")} } from ${specifier}${semi}`);
+    }
+    if (lines.length === 0) continue;
+
+    const { start, end } = nodeLines(pf, decl);
+    edits.push({ start, deleteCount: end - start + 1, insert: lines });
+    handledLines.add(start);
+    converted.push(...locals);
+  }
+
+  if (edits.length === 0) return { reason: "" };
+
+  if (hasOtherRuntimeReferences(ctx, pf, edge.to, handledLines)) {
+    return {
+      reason: `${edge.from} also reaches ${edge.to} through another load-time import.`,
+    };
+  }
+
+  const names = converted.length > 0 ? converted.join(", ") : "the imported names";
+  const part = modifyChange(
+    pf,
+    edits,
+    `Turn the import of ${names} from ${shortName(edge.to)} into \`import type\`.`,
+  );
+
+  return {
+    fix: assembleFix(
+      {
+        strategy: "type-only-import",
+        confidence: "high",
+        title: "Make the import type-only",
+        summary: `${shortName(edge.from)} only uses ${names} as types, so the import can be erased at compile time. That removes the load-time link ${shortName(edge.from)} → ${shortName(edge.to)} and breaks the loop without moving any code.`,
+        steps: [
+          `Open ${edge.from} (line ${edge.line}).`,
+          `Change the import from ${shortName(edge.to)} to \`import type\` (see the diff).`,
+          "Run your type-check. No runtime behavior changes.",
+        ],
+        caveats: [],
+      },
+      [part],
+    ),
+  };
+}
+
+/* ---- Strategy 2: skip the barrel ---- */
+
+function tryBarrelFix(
+  ctx: FixContext,
+  _cycle: CircularDependencyCycle,
+  edge: CycleEdge,
+): FixAttempt {
+  if (!isBarrelFile(edge.to) || edge.from === edge.to) return { reason: "" };
+
+  const pf = loadParsed(ctx, edge.from);
+  if (!pf) return { reason: "" };
+
+  const declarations = importDeclarationsTo(ctx, pf, edge.to).filter(
+    (decl) => !decl.importClause?.isTypeOnly,
+  );
+  if (declarations.length === 0) return { reason: "" };
+
+  const edits: LineEdit[] = [];
+  const handledLines = new Set<number>();
+  const newTargets = new Set<string>();
+  const redirected: string[] = [];
+
+  for (const decl of declarations) {
+    const clause = decl.importClause;
+
+    if (
+      !clause ||
+      clause.name ||
+      !clause.namedBindings ||
+      !ts.isNamedImports(clause.namedBindings)
+    ) {
+      return {
+        reason: `${edge.from} uses a default, namespace, or side-effect import of the barrel ${edge.to}, which cannot be redirected automatically.`,
+      };
+    }
+
+    const groups = new Map<string, string[]>();
+
+    for (const element of clause.namedBindings.elements) {
+      const imported = element.propertyName?.text ?? element.name.text;
+      const definingFile = findDefiningFile(ctx, edge.to, imported);
+
+      if (!definingFile || definingFile === edge.to || definingFile === edge.from) {
+        return {
+          reason: `Could not find which module defines "${imported}" behind the barrel ${edge.to}.`,
+        };
+      }
+
+      const list = groups.get(definingFile) ?? [];
+      list.push(element.getText(pf.sf));
+      groups.set(definingFile, list);
+      newTargets.add(definingFile);
+      redirected.push(`${imported} → ${shortName(definingFile)}`);
+    }
+
+    const specifierNode = decl.moduleSpecifier as ts.StringLiteral;
+    const quote = specifierNode.getText(pf.sf)[0];
+    const jsExtension = /\.[cm]?jsx?$/.test(specifierNode.text);
+    const semi = decl.getText(pf.sf).trimEnd().endsWith(";") ? ";" : "";
+
+    const lines = [...groups].map(
+      ([definingFile, specifiers]) =>
+        `import { ${specifiers.join(", ")} } from ${quote}${relativeSpecifier(
+          edge.from,
+          definingFile,
+          jsExtension,
+        )}${quote}${semi}`,
+    );
+
+    const { start, end } = nodeLines(pf, decl);
+    edits.push({ start, deleteCount: end - start + 1, insert: lines });
+    handledLines.add(start);
+  }
+
+  if (edits.length === 0) return { reason: "" };
+
+  if (hasOtherRuntimeReferences(ctx, pf, edge.to, handledLines)) {
+    return {
+      reason: `${edge.from} also reaches the barrel ${edge.to} through another load-time import.`,
+    };
+  }
+
+  for (const target of newTargets) {
+    if (canReach(ctx.runtimeAdjacency, target, new Set([edge.from]))) {
+      return {
+        reason: `${target} still leads back to ${edge.from}, so importing it directly would keep the loop.`,
+      };
+    }
+  }
+
+  const part = modifyChange(
+    pf,
+    edits,
+    `Import ${redirected.join(", ")} directly instead of through ${shortName(edge.to)}.`,
+  );
+
+  return {
+    fix: assembleFix(
+      {
+        strategy: "barrel-direct-import",
+        confidence: "high",
+        title: "Import from the defining module, not the barrel",
+        summary: `${shortName(edge.from)} imports from the barrel ${shortName(edge.to)}, which re-exports ${shortName(edge.from)} and so closes the loop. Importing straight from the module that defines each symbol removes the link without moving any code.`,
+        steps: [
+          `Open ${edge.from} (line ${edge.line}).`,
+          `Replace the import from ${shortName(edge.to)} with direct imports (see the diff): ${redirected.join(", ")}.`,
+          "Prefer direct imports for files that live next to the barrel; keep the barrel for outside consumers.",
+        ],
+        caveats: [],
+      },
+      [part],
+    ),
+  };
+}
+
+/* ---- Strategy 3: extract shared declarations ---- */
+
+function tryExtractSharedFix(
+  ctx: FixContext,
+  cycle: CircularDependencyCycle,
+  edge: CycleEdge,
+): FixAttempt {
+  if (edge.from === edge.to) return { reason: "" };
+
+  const from = loadParsed(ctx, edge.from);
+  const to = loadParsed(ctx, edge.to);
+  if (!from || !to) return { reason: "" };
+
+  const importDecls = importDeclarationsTo(ctx, from, edge.to).filter(
+    (decl) => !decl.importClause?.isTypeOnly,
+  );
+  if (importDecls.length === 0) return { reason: "" };
+
+  const wanted = new Set<string>();
+  const handledLines = new Set<number>();
+
+  for (const decl of importDecls) {
+    const clause = decl.importClause;
+
+    if (
+      !clause ||
+      clause.name ||
+      !clause.namedBindings ||
+      !ts.isNamedImports(clause.namedBindings)
+    ) {
+      return {
+        reason: `${edge.from} uses a default, namespace, or side-effect import of ${edge.to}, which cannot be moved automatically.`,
+      };
+    }
+
+    for (const element of clause.namedBindings.elements) {
+      wanted.add(element.propertyName?.text ?? element.name.text);
+    }
+    handledLines.add(lineAt(from, decl.getStart(from.sf)));
+  }
+
+  if (hasOtherRuntimeReferences(ctx, from, edge.to, handledLines)) {
+    return {
+      reason: `${edge.from} also reaches ${edge.to} through another load-time import.`,
+    };
+  }
+
+  const topDecls = collectTopDecls(to);
+  const byName = new Map<string, TopDecl>();
+  for (const decl of topDecls) {
+    for (const name of decl.names) byName.set(name, decl);
+  }
+
+  const importLocals = collectImportLocals(to);
+  const moved = new Set<TopDecl>();
+  const usedImports = new Set<string>();
+  const queue: TopDecl[] = [];
+
+  for (const name of wanted) {
+    const decl = byName.get(name);
+    if (!decl || !decl.exported || decl.isDefault) {
+      return {
+        reason: `"${name}" is not a plain named export declared in ${edge.to} (it may be re-exported or a default export), so it cannot be moved automatically.`,
+      };
+    }
+    queue.push(decl);
+  }
+
+  while (queue.length > 0) {
+    const decl = queue.pop()!;
+    if (moved.has(decl)) continue;
+
+    if (decl.kind === "mutable" || decl.kind === "other") {
+      return {
+        reason: `${decl.names.join(", ")} in ${edge.to} is a mutable or destructured variable, which is unsafe to move automatically.`,
+      };
+    }
+
+    if (
+      !decl.exported &&
+      ts.canHaveDecorators(decl.node) &&
+      (ts.getDecorators(decl.node)?.length ?? 0) > 0
+    ) {
+      return {
+        reason: `${decl.names.join(", ")} in ${edge.to} uses decorators, which cannot be moved automatically.`,
+      };
+    }
+
+    moved.add(decl);
+
+    if (moved.size > MAX_MOVED_DECLARATIONS) {
+      return {
+        reason: `Extracting would move more than ${MAX_MOVED_DECLARATIONS} declarations out of ${edge.to}.`,
+      };
+    }
+
+    for (const identifier of referencedIdentifiers(decl.node)) {
+      const dependency = byName.get(identifier);
+      if (dependency && dependency !== decl && !moved.has(dependency)) {
+        queue.push(dependency);
+      }
+      if (importLocals.has(identifier)) usedImports.add(identifier);
+    }
+  }
+
+  const movedRanges = [...moved].map((decl) => ({
+    decl,
+    ...nodeLines(to, decl.node, true),
+  }));
+
+  const movedLineCount = movedRanges.reduce(
+    (sum, range) => sum + (range.end - range.start + 1),
+    0,
+  );
+  if (movedLineCount > MAX_MOVED_LINES) {
+    return {
+      reason: `Extracting would move about ${movedLineCount} lines out of ${edge.to}.`,
+    };
+  }
+
+  for (const statement of to.sf.statements) {
+    if (topDecls.some((decl) => decl.node === statement && moved.has(decl))) {
+      continue;
+    }
+    const range = nodeLines(to, statement, true);
+    if (
+      movedRanges.some(
+        (moving) => range.start <= moving.end && range.end >= moving.start,
+      )
+    ) {
+      return {
+        reason: `A declaration to move shares a line with other code in ${edge.to}.`,
+      };
+    }
+  }
+
+  const neededImports = new Map<
+    ts.ImportDeclaration,
+    { def?: string; ns?: string; named: string[] }
+  >();
+
+  for (const [local, info] of importLocals) {
+    if (!usedImports.has(local)) continue;
+
+    const entry = neededImports.get(info.decl) ?? { named: [] };
+    if (info.kind === "default") entry.def = local;
+    else if (info.kind === "namespace") entry.ns = local;
+    else entry.named.push(info.element!.getText(to.sf));
+    neededImports.set(info.decl, entry);
+  }
+
+  for (const decl of neededImports.keys()) {
+    if (decl.importClause?.isTypeOnly) continue;
+    if (!ts.isStringLiteral(decl.moduleSpecifier)) continue;
+
+    const target = ctx.resolve(to.abs, decl.moduleSpecifier.text.split("?")[0]);
+    if (!target) continue;
+
+    const targetRel = ctx.relative(target);
+    if (
+      canReach(
+        ctx.runtimeAdjacency,
+        targetRel,
+        new Set([edge.from, edge.to]),
+      )
+    ) {
+      return {
+        reason: `The code to move depends on ${targetRel}, which leads back into this loop, so extracting it would recreate the cycle.`,
+      };
+    }
+  }
+
+  const movedNames = new Set([...moved].flatMap((decl) => decl.names));
+  const usedLocally = new Set<string>();
+  const remainingReferences = new Set<string>();
+
+  for (const statement of to.sf.statements) {
+    if (topDecls.some((decl) => decl.node === statement && moved.has(decl))) {
+      continue;
+    }
+    if (ts.isImportDeclaration(statement)) continue;
+
+    for (const identifier of referencedIdentifiers(statement)) {
+      remainingReferences.add(identifier);
+      if (!movedNames.has(identifier)) continue;
+
+      if (ts.isExportDeclaration(statement) && !statement.moduleSpecifier) {
+        return {
+          reason: `${edge.to} re-exports ${identifier} with a local export clause, which would conflict with the extraction.`,
+        };
+      }
+      usedLocally.add(identifier);
+    }
+  }
+
+  /* ---- Build the new shared module ---- */
+
+  const directory = path.posix.dirname(edge.to);
+  const extension = path.posix.extname(edge.to);
+  const stem = path.posix.basename(edge.to, extension);
+  const prefix = directory === "." ? "" : `${directory}/`;
+
+  let sharedRel = `${prefix}${stem}.shared${extension}`;
+  for (let suffix = 2; ctx.knownFiles.has(sharedRel); suffix++) {
+    sharedRel = `${prefix}${stem}.shared${suffix}${extension}`;
+  }
+
+  const firstImport = to.sf.statements.find(ts.isImportDeclaration);
+  const semi =
+    !firstImport || firstImport.getText(to.sf).trimEnd().endsWith(";") ? ";" : "";
+  const quote =
+    firstImport && ts.isStringLiteral(firstImport.moduleSpecifier)
+      ? firstImport.moduleSpecifier.getText(to.sf)[0]
+      : '"';
+
+  const importLines: string[] = [];
+  for (const [decl, entry] of neededImports) {
+    const typePrefix = decl.importClause?.isTypeOnly ? "type " : "";
+    const parts: string[] = [];
+    if (entry.def) parts.push(entry.def);
+    if (entry.ns) parts.push(`* as ${entry.ns}`);
+    else if (entry.named.length > 0) parts.push(`{ ${entry.named.join(", ")} }`);
+
+    importLines.push(
+      `import ${typePrefix}${parts.join(", ")} from ${decl.moduleSpecifier.getText(to.sf)}${semi}`,
+    );
+  }
+
+  const orderedMoved = [...moved].sort(
+    (a, b) => a.node.getStart(to.sf) - b.node.getStart(to.sf),
+  );
+
+  const declarationBlocks = orderedMoved.map((decl) => {
+    const docStart = decl.node.getStart(to.sf, true);
+    const nodeStart = decl.node.getStart(to.sf);
+    const body = to.text.slice(docStart, nodeStart) +
+      (decl.exported ? "" : "export ") +
+      to.text.slice(nodeStart, decl.node.getEnd());
+    return body.replace(/\r\n/g, "\n");
+  });
+
+  const sharedLines = [
+    `// Extracted from ${shortName(edge.to)} to break an import cycle.`,
+    ...importLines,
+    "",
+    ...declarationBlocks.join("\n\n").split("\n"),
+  ];
+
+  /* ---- Edits to the importing file ---- */
+
+  const jsExtension = importDecls.some((decl) =>
+    /\.[cm]?jsx?$/.test((decl.moduleSpecifier as ts.StringLiteral).text),
+  );
+
+  const fromEdits: LineEdit[] = importDecls.map((decl) => {
+    const specifier = decl.moduleSpecifier;
+    const declQuote = specifier.getText(from.sf)[0];
+    const replaced =
+      from.text.slice(decl.getStart(from.sf), specifier.getStart(from.sf)) +
+      `${declQuote}${relativeSpecifier(edge.from, sharedRel, jsExtension)}${declQuote}` +
+      from.text.slice(specifier.getEnd(), decl.getEnd());
+    const { start, end } = nodeLines(from, decl);
+
+    return {
+      start,
+      deleteCount: end - start + 1,
+      insert: replaced.split(/\r?\n/),
+    };
+  });
+
+  /* ---- Edits to the exporting file ---- */
+
+  const sharedSpecifier = `${quote}${relativeSpecifier(edge.to, sharedRel, jsExtension)}${quote}`;
+  const reexportValues = orderedMoved
+    .filter((decl) => decl.exported && !decl.typeLike)
+    .flatMap((decl) => decl.names);
+  const reexportTypes = orderedMoved
+    .filter((decl) => decl.exported && decl.typeLike)
+    .flatMap((decl) => decl.names);
+  const typeNames = new Set(
+    orderedMoved.filter((decl) => decl.typeLike).flatMap((decl) => decl.names),
+  );
+
+  const toInsert: string[] = [];
+  if (usedLocally.size > 0) {
+    const items = [...usedLocally].map((name) =>
+      typeNames.has(name) ? `type ${name}` : name,
+    );
+    toInsert.push(`import { ${items.join(", ")} } from ${sharedSpecifier}${semi}`);
+  }
+  if (reexportValues.length > 0) {
+    toInsert.push(
+      `export { ${reexportValues.join(", ")} } from ${sharedSpecifier}${semi}`,
+    );
+  }
+  if (reexportTypes.length > 0) {
+    toInsert.push(
+      `export type { ${reexportTypes.join(", ")} } from ${sharedSpecifier}${semi}`,
+    );
+  }
+
+  const lastImport = [...to.sf.statements].reverse().find(ts.isImportDeclaration);
+  const insertAt = lastImport ? nodeLines(to, lastImport).end + 1 : 1;
+
+  // Remove the moved declarations, plus any blank line that would otherwise be
+  // left doubled up behind them.
+  const removed = new Set<number>();
+  const sortedRanges = [...movedRanges].sort((a, b) => a.start - b.start);
+
+  for (const range of sortedRanges) {
+    for (let line = range.start; line <= range.end; line++) removed.add(line);
+  }
+
+  for (const range of sortedRanges) {
+    let probe = range.start - 1;
+    while (probe >= 1 && removed.has(probe)) probe--;
+
+    const previousKeptIsBlank =
+      probe < 1 || to.lines[probe - 1].trim() === "";
+
+    let next = range.end + 1;
+    while (
+      previousKeptIsBlank &&
+      next <= to.lines.length &&
+      !removed.has(next) &&
+      to.lines[next - 1].trim() === ""
+    ) {
+      removed.add(next);
+      next++;
+    }
+  }
+
+  const toEdits: LineEdit[] = [];
+  for (const line of [...removed].sort((a, b) => a - b)) {
+    const last = toEdits[toEdits.length - 1];
+    if (last && last.start + last.deleteCount === line) last.deleteCount++;
+    else toEdits.push({ start: line, deleteCount: 1, insert: [] });
+  }
+  if (toInsert.length > 0) {
+    toEdits.push({ start: insertAt, deleteCount: 0, insert: toInsert });
+  }
+
+  const movedLabel = orderedMoved.flatMap((decl) => decl.names).join(", ");
+  const fromPart = modifyChange(
+    from,
+    fromEdits,
+    `Import ${[...wanted].join(", ")} from ${shortName(sharedRel)} instead of ${shortName(edge.to)}.`,
+  );
+  const toPart = modifyChange(
+    to,
+    toEdits,
+    `Move ${movedLabel} out and re-export it from ${shortName(sharedRel)} so existing importers keep working.`,
+  );
+  const sharedPart = createChange(
+    sharedRel,
+    sharedLines,
+    `New module holding ${movedLabel}. It imports nothing from this loop.`,
+    to.cr,
+  );
+
+  return {
+    fix: assembleFix(
+      {
+        strategy: "extract-shared-module",
+        confidence: "medium",
+        title: "Extract the shared code into its own module",
+        summary: `${shortName(edge.from)} needs ${[...wanted].join(", ")} from ${shortName(edge.to)}, while ${shortName(edge.to)} leads back to ${shortName(edge.from)}. Moving ${movedLabel} into ${shortName(sharedRel)} lets both files depend on a module that depends on neither.`,
+        steps: [
+          `Create ${sharedRel} with ${movedLabel} (see the diff).`,
+          `In ${edge.to}, remove those declarations and re-export them from ${shortName(sharedRel)}, so other files that import them from ${shortName(edge.to)} keep working.`,
+          `In ${edge.from}, import ${[...wanted].join(", ")} from ${shortName(sharedRel)}.`,
+          "Run your type-check and tests. Later, point other importers at the new module and drop the re-export.",
+        ],
+        caveats: [
+          `Generated by static analysis; run your type-check and tests after applying. The new file is named ${shortName(sharedRel)}. Rename it to something meaningful if you like.`,
+          ...(() => {
+            const leftover = [...usedImports].filter(
+              (name) => !remainingReferences.has(name),
+            );
+            return leftover.length > 0
+              ? [
+                  `${shortName(edge.to)} no longer uses the import${leftover.length === 1 ? "" : "s"} ${leftover.join(", ")}. Remove ${leftover.length === 1 ? "it" : "them"} to keep your linter happy.`,
+                ]
+              : [];
+          })(),
+          ...(cycle.length > 2
+            ? [
+                `This breaks the link ${shortName(edge.from)} → ${shortName(edge.to)}. Other loops that do not use it are unaffected.`,
+              ]
+            : []),
+        ],
+      },
+      [fromPart, toPart, sharedPart],
+    ),
+  };
+}
+
+/* ---- Strategy 4: self-import ---- */
+
+function trySelfImportFix(ctx: FixContext, edge: CycleEdge): FixAttempt {
+  const pf = loadParsed(ctx, edge.from);
+  if (!pf) return { reason: "" };
+
+  const declared = new Set(collectTopDecls(pf).flatMap((decl) => decl.names));
+  const edits: LineEdit[] = [];
+
+  for (const decl of importDeclarationsTo(ctx, pf, edge.from)) {
+    const clause = decl.importClause;
+
+    if (
+      !clause ||
+      clause.name ||
+      !clause.namedBindings ||
+      !ts.isNamedImports(clause.namedBindings) ||
+      clause.namedBindings.elements.some(
+        (element) => element.propertyName || !declared.has(element.name.text),
+      )
+    ) {
+      return {
+        reason: `${edge.from} imports itself in a way that cannot be removed automatically.`,
+      };
+    }
+
+    const { start, end } = nodeLines(pf, decl);
+    edits.push({ start, deleteCount: end - start + 1, insert: [] });
+  }
+
+  if (edits.length === 0) return { reason: "" };
+
+  return {
+    fix: assembleFix(
+      {
+        strategy: "remove-self-import",
+        confidence: "high",
+        title: "Remove the self-import",
+        summary: `${shortName(edge.from)} imports names that it declares itself. The import is redundant and can be deleted.`,
+        steps: [`Delete the import at line ${edge.line} of ${edge.from}.`],
+        caveats: [],
+      },
+      [modifyChange(pf, edits, "Delete the redundant self-import.")],
+    ),
+  };
+}
+
+/* ---- Orchestration ---- */
+
+function noChangeFix(cycle: CircularDependencyCycle): CycleFix {
+  const lazy = cycle.kind === "lazy";
+
+  return {
+    strategy: "no-change-needed",
+    confidence: "high",
+    title: "No change required",
+    summary: lazy
+      ? "A dynamic import() already breaks this loop at load time, so the modules never evaluate each other during startup."
+      : "This loop only exists in type positions and is erased by the compiler, so it has no runtime effect.",
+    steps: [
+      lazy
+        ? "Keep the dynamic import() if it is deliberate code splitting."
+        : "Optionally move the shared types into a separate types module if you want the import graph to be acyclic.",
+    ],
+    changes: [],
+    patch: "",
+    caveats: [],
+  };
+}
+
+function manualFix(cycle: CircularDependencyCycle, reasons: string[]): CycleFix {
+  const weakest = cycle.weakestLink;
+  const edge =
+    cycle.edges.find(
+      (candidate) =>
+        candidate.from === weakest.from && candidate.to === weakest.to,
+    ) ?? cycle.edges[0];
+
+  return {
+    strategy: "manual",
+    confidence: "low",
+    title: "Manual refactor needed",
+    summary: `No automatic fix was safe for this loop. The best place to cut is ${shortName(edge.from)} → ${shortName(edge.to)} (line ${edge.line}).`,
+    steps: [
+      `Open ${edge.from} at line ${edge.line}: ${edge.statement}`,
+      `Move the code that ${shortName(edge.from)} needs from ${shortName(edge.to)} into a new module that imports nothing from this loop, or pass it into ${shortName(edge.from)} as a parameter or callback.`,
+      "Re-run this analyzer to confirm the loop is gone.",
+    ],
+    changes: [],
+    patch: "",
+    caveats: reasons.filter(Boolean).slice(0, 4),
+  };
+}
+
+function buildFix(ctx: FixContext, cycle: CircularDependencyCycle): CycleFix {
+  if (cycle.kind !== "runtime") return noChangeFix(cycle);
+
+  const reasons: string[] = [];
+
+  if (cycle.length === 1) {
+    const attempt = trySelfImportFix(ctx, cycle.edges[0]);
+    if ("fix" in attempt) return attempt.fix;
+    reasons.push(attempt.reason);
+    return manualFix(cycle, reasons);
+  }
+
+  const edges = [...cycle.edges].sort((a, b) => edgeCost(a) - edgeCost(b));
+  const strategies = [tryTypeOnlyFix, tryBarrelFix, tryExtractSharedFix];
+
+  for (const strategy of strategies) {
+    for (const edge of edges) {
+      const attempt = strategy(ctx, cycle, edge);
+      if ("fix" in attempt) return attempt.fix;
+      if (attempt.reason && !reasons.includes(attempt.reason)) {
+        reasons.push(attempt.reason);
+      }
+    }
+  }
+
+  return manualFix(cycle, reasons);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1071,6 +2481,8 @@ export async function analyzeCircularDependencies(
   let reachedCycleLimit = false;
   let reachedGroupLimit = false;
 
+  let runtimeAdjacency = new Map<string, string[]>();
+
   for (const layer of LAYERS) {
     const adjacency = new Map<string, string[]>();
 
@@ -1080,6 +2492,8 @@ export async function analyzeCircularDependencies(
       if (list) list.push(edge.to);
       else adjacency.set(edge.from, [edge.to]);
     }
+
+    if (layer.kind === "runtime") runtimeAdjacency = adjacency;
 
     const nodes = new Set<string>(adjacency.keys());
     for (const targets of adjacency.values()) {
@@ -1221,6 +2635,48 @@ export async function analyzeCircularDependencies(
       a.length - b.length ||
       a.files[0].localeCompare(b.files[0]),
   );
+
+  /* ---- Concrete fixes ---- */
+
+  const fixContext: FixContext = {
+    root,
+    resolve,
+    relative,
+    runtimeAdjacency,
+    knownFiles: new Set(discovered.sources.map(relative)),
+    cache: new Map(),
+  };
+
+  let fixBudget = MAX_FIX_CYCLES;
+  let skippedFixes = 0;
+
+  for (const cycle of reported) {
+    if (cycle.kind !== "runtime") {
+      cycle.fix = noChangeFix(cycle);
+      continue;
+    }
+
+    if (fixBudget <= 0) {
+      skippedFixes++;
+      continue;
+    }
+
+    fixBudget--;
+
+    try {
+      cycle.fix = buildFix(fixContext, cycle);
+    } catch {
+      cycle.fix = manualFix(cycle, [
+        "The automatic fix generator hit an unexpected problem for this loop.",
+      ]);
+    }
+  }
+
+  if (skippedFixes > 0) {
+    warn(
+      `Ready-made fixes are generated for the ${MAX_FIX_CYCLES} highest-risk runtime cycles. Use the focus file option to get fixes for the other ${skippedFixes}.`,
+    );
+  }
 
   /* ---- Summaries ---- */
 
