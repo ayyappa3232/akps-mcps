@@ -21,6 +21,7 @@ import { analyzeCircularDependencies } from "./tools/analyzeCircularDependencies
 import { detectDuplicateCode } from "./tools/detectDuplicateCode.js";
 import { analyzeReactComponents } from "./tools/analyzeReactComponents.js";
 import { analyzeReactRerenders } from "./tools/analyzeReactRerenders.js";
+import { analyzeHookDependencies } from "./tools/analyzeHookDependencies.js";
 
 const app = express();
 const PORT = 4174;
@@ -1153,6 +1154,95 @@ app.post("/api/analyze-react-rerenders", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to analyze React re-renders.",
+    });
+  }
+});
+
+app.post("/api/analyze-hook-dependencies", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      filePath,
+      hookScope = "all",
+      minSeverity = "info",
+      includeTests = false,
+    } = req.body ?? {};
+
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+
+    if (filePath !== undefined && typeof filePath !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be a string when provided.",
+      });
+    }
+
+    if (!["all", "effects", "memoization"].includes(hookScope)) {
+      return res.status(400).json({
+        success: false,
+        error: "hookScope must be one of all, effects, or memoization.",
+      });
+    }
+
+    if (!["critical", "high", "medium", "low", "info"].includes(minSeverity)) {
+      return res.status(400).json({
+        success: false,
+        error: "minSeverity must be one of critical, high, medium, low, or info.",
+      });
+    }
+
+    if (typeof includeTests !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeTests must be a boolean.",
+      });
+    }
+
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+
+    if (
+      typeof filePath === "string" &&
+      (path.isAbsolute(filePath) ||
+        filePath.split(/[\\/]/).includes(".."))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be relative to projectPath.",
+      });
+    }
+
+    const report = await analyzeHookDependencies(
+      projectPath,
+      typeof filePath === "string" && filePath.trim()
+        ? filePath.trim()
+        : undefined,
+      { hookScope, minSeverity, includeTests },
+    );
+
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "analyze_hook_dependencies",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze hook dependencies.",
     });
   }
 });

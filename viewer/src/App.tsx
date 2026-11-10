@@ -26,6 +26,7 @@ import AnalyzeCircularDependencies from "./modules/circularDependencies/AnalyzeC
 import DetectDuplicateCode from "./modules/duplicateCodeDetector/DetectDuplicateCode";
 import AnalyzeReactComponents from "./modules/reactComponents/AnalyzeReactComponents";
 import AnalyzeReactRerenders from "./modules/reactRerenders/AnalyzeReactRerenders";
+import AnalyzeHookDependencies from "./modules/hookDependencies/AnalyzeHookDependencies";
 
 
 const defaultProjectPath =
@@ -208,7 +209,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies";
   label: string;
   icon: string;
 };
@@ -225,7 +226,8 @@ const developerTools: DeveloperTool[] = [
   { value: "circularDependencies", label: "Circular Dependencies", icon: "⟳" },
   { value: "duplicateCode", label: "Duplicate Code", icon: "⧉" },
   { value: "reactComponents", label: "React Components", icon: "⚛" },
-  { value: "reactRerenders", label: "Re-render Analyzer", icon: "↻" }
+  { value: "reactRerenders", label: "Re-render Analyzer", icon: "↻" },
+  { value: "hookDependencies", label: "Hook Dependencies", icon: "⚓" }
 ];
 
 function DeveloperToolsSelect({
@@ -494,7 +496,8 @@ export default function App() {
       "circularDependencies" |
       "duplicateCode" |
       "reactComponents" |
-      "reactRerenders"
+      "reactRerenders" |
+      "hookDependencies"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -898,7 +901,8 @@ export default function App() {
                 activeView === "circularDependencies" ||
                 activeView === "duplicateCode" ||
                 activeView === "reactComponents" ||
-                activeView === "reactRerenders"
+                activeView === "reactRerenders" ||
+                activeView === "hookDependencies"
                 ? activeView
                 : null
             }
@@ -935,7 +939,9 @@ export default function App() {
                                       ? "React Component Analyzer"
                                       : activeView === "reactRerenders"
                                         ? "React Re-render Analyzer"
-                                        : "API Explorer"}
+                                        : activeView === "hookDependencies"
+                                          ? "Hook Dependency Analyzer"
+                                          : "API Explorer"}
             </h2>
 
             <p>
@@ -965,7 +971,9 @@ export default function App() {
                                       ? "Inspect props, hooks, and render relationships for every component, and fix hook, effect, and list problems."
                                       : activeView === "reactRerenders"
                                         ? "Find avoidable re-renders, see which components render together, and get a fix for each one."
-                                        : "Explore HTTP and Firebase backend communication used by your application."}
+                                        : activeView === "hookDependencies"
+                                          ? "Check useEffect, useMemo, and useCallback dependency arrays, spot stale values and missing cleanup, and get the corrected array."
+                                          : "Explore HTTP and Firebase backend communication used by your application."}
             </p>
           </div>
 
@@ -1245,6 +1253,13 @@ export default function App() {
 
         {activeView === "reactRerenders" && (
           <AnalyzeReactRerenders
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "hookDependencies" && (
+          <AnalyzeHookDependencies
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />
