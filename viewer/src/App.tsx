@@ -25,6 +25,7 @@ import AnalyzeDependencyHealth from "./modules/dependenciesHealth/AnalyzeDepende
 import AnalyzeCircularDependencies from "./modules/circularDependencies/AnalyzeCircularDependencies";
 import DetectDuplicateCode from "./modules/duplicateCodeDetector/DetectDuplicateCode";
 import AnalyzeReactComponents from "./modules/reactComponents/AnalyzeReactComponents";
+import AnalyzeReactRerenders from "./modules/reactRerenders/AnalyzeReactRerenders";
 
 
 const defaultProjectPath =
@@ -207,7 +208,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders";
   label: string;
   icon: string;
 };
@@ -223,7 +224,8 @@ const developerTools: DeveloperTool[] = [
   { value: "dependencyHealth", label: "Dependency Health", icon: "📦" },
   { value: "circularDependencies", label: "Circular Dependencies", icon: "⟳" },
   { value: "duplicateCode", label: "Duplicate Code", icon: "⧉" },
-  { value: "reactComponents", label: "React Components", icon: "⚛" }
+  { value: "reactComponents", label: "React Components", icon: "⚛" },
+  { value: "reactRerenders", label: "Re-render Analyzer", icon: "↻" }
 ];
 
 function DeveloperToolsSelect({
@@ -491,7 +493,8 @@ export default function App() {
       "dependencyHealth" |
       "circularDependencies" |
       "duplicateCode" |
-      "reactComponents"
+      "reactComponents" |
+      "reactRerenders"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -894,7 +897,8 @@ export default function App() {
                 activeView === "dependencyHealth" ||
                 activeView === "circularDependencies" ||
                 activeView === "duplicateCode" ||
-                activeView === "reactComponents"
+                activeView === "reactComponents" ||
+                activeView === "reactRerenders"
                 ? activeView
                 : null
             }
@@ -929,7 +933,9 @@ export default function App() {
                                     ? "Duplicate Code Detector"
                                     : activeView === "reactComponents"
                                       ? "React Component Analyzer"
-                                      : "API Explorer"}
+                                      : activeView === "reactRerenders"
+                                        ? "React Re-render Analyzer"
+                                        : "API Explorer"}
             </h2>
 
             <p>
@@ -957,7 +963,9 @@ export default function App() {
                                     ? "Find copied code blocks, compare the copies side by side, and see where to merge them."
                                     : activeView === "reactComponents"
                                       ? "Inspect props, hooks, and render relationships for every component, and fix hook, effect, and list problems."
-                                      : "Explore HTTP and Firebase backend communication used by your application."}
+                                      : activeView === "reactRerenders"
+                                        ? "Find avoidable re-renders, see which components render together, and get a fix for each one."
+                                        : "Explore HTTP and Firebase backend communication used by your application."}
             </p>
           </div>
 
@@ -1230,6 +1238,13 @@ export default function App() {
 
         {activeView === "reactComponents" && (
           <AnalyzeReactComponents
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "reactRerenders" && (
+          <AnalyzeReactRerenders
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />
