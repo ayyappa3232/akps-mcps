@@ -25,8 +25,9 @@ import AnalyzeDependencyHealth from "./modules/dependenciesHealth/AnalyzeDepende
 import AnalyzeCircularDependencies from "./modules/circularDependencies/AnalyzeCircularDependencies";
 import DetectDuplicateCode from "./modules/duplicateCodeDetector/DetectDuplicateCode";
 import AnalyzeReactComponents from "./modules/reactComponents/AnalyzeReactComponents";
-import AnalyzeReactRerenders from "./modules/reactRerenders/AnalyzeReactRerenders";
+import AnalyzeReactRerenders from "./modules/reactReRenders/AnalyzeReactRerenders";
 import AnalyzeHookDependencies from "./modules/hookDependencies/AnalyzeHookDependencies";
+import DetectBreakingApiChanges from "./modules/breakingAPIChanges/DetectBreakingApiChanges";
 
 
 const defaultProjectPath =
@@ -209,7 +210,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges";
   label: string;
   icon: string;
 };
@@ -227,7 +228,8 @@ const developerTools: DeveloperTool[] = [
   { value: "duplicateCode", label: "Duplicate Code", icon: "⧉" },
   { value: "reactComponents", label: "React Components", icon: "⚛" },
   { value: "reactRerenders", label: "Re-render Analyzer", icon: "↻" },
-  { value: "hookDependencies", label: "Hook Dependencies", icon: "⚓" }
+  { value: "hookDependencies", label: "Hook Dependencies", icon: "⚓" },
+  { value: "breakingApiChanges", label: "Breaking API Changes", icon: "⚠" }
 ];
 
 function DeveloperToolsSelect({
@@ -497,7 +499,8 @@ export default function App() {
       "duplicateCode" |
       "reactComponents" |
       "reactRerenders" |
-      "hookDependencies"
+      "hookDependencies" |
+      "breakingApiChanges"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -902,7 +905,8 @@ export default function App() {
                 activeView === "duplicateCode" ||
                 activeView === "reactComponents" ||
                 activeView === "reactRerenders" ||
-                activeView === "hookDependencies"
+                activeView === "hookDependencies" ||
+                activeView === "breakingApiChanges"
                 ? activeView
                 : null
             }
@@ -941,7 +945,9 @@ export default function App() {
                                         ? "React Re-render Analyzer"
                                         : activeView === "hookDependencies"
                                           ? "Hook Dependency Analyzer"
-                                          : "API Explorer"}
+                                          : activeView === "breakingApiChanges"
+                                            ? "Breaking API Change Detector"
+                                            : "API Explorer"}
             </h2>
 
             <p>
@@ -973,7 +979,9 @@ export default function App() {
                                         ? "Find avoidable re-renders, see which components render together, and get a fix for each one."
                                         : activeView === "hookDependencies"
                                           ? "Check useEffect, useMemo, and useCallback dependency arrays, spot stale values and missing cleanup, and get the corrected array."
-                                          : "Explore HTTP and Firebase backend communication used by your application."}
+                                          : activeView === "breakingApiChanges"
+                                            ? "Compare a baseline version with your code to find exports and HTTP routes that would break consumers, and see how to migrate safely."
+                                            : "Explore HTTP and Firebase backend communication used by your application."}
             </p>
           </div>
 
@@ -1260,6 +1268,13 @@ export default function App() {
 
         {activeView === "hookDependencies" && (
           <AnalyzeHookDependencies
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "breakingApiChanges" && (
+          <DetectBreakingApiChanges
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />

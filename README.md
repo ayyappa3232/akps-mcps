@@ -1756,15 +1756,15 @@ Use this section as the project checklist. Update the status from `[ ]` to `[x]`
 - [x] React Component Analyzer - `analyzeReactComponent.ts`
 - [x] React Re-render Analyzer - `analyzeReactRerender.ts`
 - [x] Hook Dependency Analyzer - `analyzeHookDependencies.ts`
-- [ ] State Flow Analyzer
+- [ ] State Flow Analyzer - Inprogress
 
 **Phase 2: 0/4 complete**
 
 #### Phase 3 — API Intelligence
 
 - [x] API Dependency Analyzer — `analyzeApiEndpoints.ts`
-- [ ] API Contract Analyzer
-- [ ] Breaking API Change Detector
+- [ ] API Contract Analyzer - Inprogress
+- [x] Breaking API Change Detector - `detectBreakingApiChanges.ts`
 
 **Phase 3: 1/3 complete**
 

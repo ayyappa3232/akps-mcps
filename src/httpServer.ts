@@ -19,6 +19,7 @@ import { analyzeTestCoverage } from "./tools/analyzeTestCoverage.js";
 import { analyzeDependencyHealth } from "./tools/analyzeDependencyHealth.js";
 import { analyzeCircularDependencies } from "./tools/analyzeCircularDependencies.js";
 import { detectDuplicateCode } from "./tools/detectDuplicateCode.js";
+import { detectBreakingApiChanges } from "./tools/detectBreakingApiChanges.js";
 import { analyzeReactComponents } from "./tools/analyzeReactComponents.js";
 import { analyzeReactRerenders } from "./tools/analyzeReactRerenders.js";
 import { analyzeHookDependencies } from "./tools/analyzeHookDependencies.js";
@@ -969,6 +970,167 @@ app.post("/api/detect-duplicate-code", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to detect duplicate code.",
+    });
+  }
+});
+
+app.post("/api/detect-breaking-api-changes", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      filePath,
+      baseRef,
+      headRef,
+      baselinePath,
+      scope = "all",
+      entryFiles,
+      includeNonBreaking = false,
+      includeTests = false,
+    } = req.body ?? {};
+
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+
+    if (filePath !== undefined && typeof filePath !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be a string when provided.",
+      });
+    }
+
+    for (const [name, value] of [
+      ["baseRef", baseRef],
+      ["headRef", headRef],
+      ["baselinePath", baselinePath],
+    ] as const) {
+      if (value !== undefined && typeof value !== "string") {
+        return res.status(400).json({
+          success: false,
+          error: `${name} must be a string when provided.`,
+        });
+      }
+    }
+
+    if (!["all", "exports", "routes"].includes(scope)) {
+      return res.status(400).json({
+        success: false,
+        error: "scope must be one of all, exports, or routes.",
+      });
+    }
+
+    if (
+      entryFiles !== undefined &&
+      (!Array.isArray(entryFiles) ||
+        entryFiles.length > 50 ||
+        entryFiles.some(
+          (entry: unknown) =>
+            typeof entry !== "string" ||
+            !entry.trim() ||
+            path.isAbsolute(entry) ||
+            entry.split(/[\\/]/).includes(".."),
+        ))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "entryFiles must be an array of up to 50 relative file paths.",
+      });
+    }
+
+    if (typeof includeNonBreaking !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeNonBreaking must be a boolean.",
+      });
+    }
+
+    if (typeof includeTests !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeTests must be a boolean.",
+      });
+    }
+
+    const cleanBaseRef =
+      typeof baseRef === "string" && baseRef.trim() ? baseRef.trim() : undefined;
+    const cleanHeadRef =
+      typeof headRef === "string" && headRef.trim() ? headRef.trim() : undefined;
+    const cleanBaselinePath =
+      typeof baselinePath === "string" && baselinePath.trim()
+        ? baselinePath.trim()
+        : undefined;
+
+    const refPattern = /^[A-Za-z0-9_][A-Za-z0-9_.\-/@^~{}:]*$/;
+
+    for (const [name, value] of [
+      ["baseRef", cleanBaseRef],
+      ["headRef", cleanHeadRef],
+    ] as const) {
+      if (value !== undefined && (value.length > 200 || !refPattern.test(value))) {
+        return res.status(400).json({
+          success: false,
+          error: `${name} must be a git branch, tag or commit (letters, digits and . _ - / @ ^ ~ only).`,
+        });
+      }
+    }
+
+    if (cleanBaselinePath && (cleanBaseRef || cleanHeadRef)) {
+      return res.status(400).json({
+        success: false,
+        error: "Use either baselinePath or baseRef/headRef, not both.",
+      });
+    }
+
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+
+    if (
+      typeof filePath === "string" &&
+      (path.isAbsolute(filePath) ||
+        filePath.split(/[\\/]/).includes(".."))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be relative to projectPath.",
+      });
+    }
+
+    const report = await detectBreakingApiChanges(projectPath, {
+      baseRef: cleanBaseRef,
+      headRef: cleanHeadRef,
+      baselinePath: cleanBaselinePath,
+      filePath:
+        typeof filePath === "string" && filePath.trim()
+          ? filePath.trim()
+          : undefined,
+      scope,
+      entryFiles: entryFiles?.map((entry: string) => entry.trim()),
+      includeNonBreaking,
+      includeTests,
+    });
+
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "detect_breaking_api_changes",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to detect breaking API changes.",
     });
   }
 });
