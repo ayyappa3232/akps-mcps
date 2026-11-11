@@ -29,6 +29,7 @@ import AnalyzeReactRerenders from "./modules/reactReRenders/AnalyzeReactRerender
 import AnalyzeHookDependencies from "./modules/hookDependencies/AnalyzeHookDependencies";
 import DetectBreakingApiChanges from "./modules/breakingAPIChanges/DetectBreakingApiChanges";
 import AnalyzeApiContracts from "./modules/apiContracts/AnalyzeApiContracts";
+import AnalyzeStateFlow from "./modules/stateFlow/AnalyzeStateFlow";
 
 
 const defaultProjectPath =
@@ -211,7 +212,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow";
   label: string;
   icon: string;
 };
@@ -231,7 +232,8 @@ const developerTools: DeveloperTool[] = [
   { value: "reactRerenders", label: "Re-render Analyzer", icon: "↻" },
   { value: "hookDependencies", label: "Hook Dependencies", icon: "⚓" },
   { value: "breakingApiChanges", label: "Breaking API Changes", icon: "⚠" },
-  { value: "apiContracts", label: "API Contracts", icon: "⇌" }
+  { value: "apiContracts", label: "API Contracts", icon: "⇌" },
+  { value: "stateFlow", label: "State Flow", icon: "⇶" }
 ];
 
 function DeveloperToolsSelect({
@@ -503,7 +505,8 @@ export default function App() {
       "reactRerenders" |
       "hookDependencies" |
       "breakingApiChanges" |
-      "apiContracts"
+      "apiContracts" |
+      "stateFlow"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -910,7 +913,8 @@ export default function App() {
                 activeView === "reactRerenders" ||
                 activeView === "hookDependencies" ||
                 activeView === "breakingApiChanges" ||
-                activeView === "apiContracts"
+                activeView === "apiContracts" ||
+                activeView === "stateFlow"
                 ? activeView
                 : null
             }
@@ -1286,6 +1290,13 @@ export default function App() {
 
         {activeView === "apiContracts" && (
           <AnalyzeApiContracts
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "stateFlow" && (
+          <AnalyzeStateFlow
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />
