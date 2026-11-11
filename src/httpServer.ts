@@ -23,6 +23,7 @@ import { detectBreakingApiChanges } from "./tools/detectBreakingApiChanges.js";
 import { analyzeReactComponents } from "./tools/analyzeReactComponents.js";
 import { analyzeReactRerenders } from "./tools/analyzeReactRerenders.js";
 import { analyzeHookDependencies } from "./tools/analyzeHookDependencies.js";
+import { analyzeApiContracts } from "./tools/analyzeApiContracts.js";
 
 const app = express();
 const PORT = 4174;
@@ -1405,6 +1406,114 @@ app.post("/api/analyze-hook-dependencies", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to analyze hook dependencies.",
+    });
+  }
+});
+
+app.post("/api/analyze-api-contracts", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      filePath,
+      pathPrefix,
+      includeUnused = true,
+      includeTests = false,
+    } = req.body ?? {};
+ 
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+ 
+    if (filePath !== undefined && typeof filePath !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be a string when provided.",
+      });
+    }
+ 
+    if (pathPrefix !== undefined && typeof pathPrefix !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "pathPrefix must be a string when provided.",
+      });
+    }
+ 
+    if (
+      typeof pathPrefix === "string" &&
+      pathPrefix.trim() &&
+      !/^\/?[A-Za-z0-9._~\-/:]*$/.test(pathPrefix.trim())
+    ) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "pathPrefix may only contain letters, numbers, and / . _ ~ - :",
+      });
+    }
+ 
+    if (typeof includeUnused !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeUnused must be a boolean.",
+      });
+    }
+ 
+    if (typeof includeTests !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeTests must be a boolean.",
+      });
+    }
+ 
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+ 
+    if (
+      typeof filePath === "string" &&
+      (path.isAbsolute(filePath) ||
+        filePath.split(/[\\/]/).includes(".."))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be relative to projectPath.",
+      });
+    }
+ 
+    const report = await analyzeApiContracts(
+      projectPath,
+      typeof filePath === "string" && filePath.trim()
+        ? filePath.trim()
+        : undefined,
+      {
+        pathPrefix:
+          typeof pathPrefix === "string" && pathPrefix.trim()
+            ? pathPrefix.trim()
+            : undefined,
+        includeUnused,
+        includeTests,
+      },
+    );
+ 
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "analyze_api_contracts",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze API contracts.",
     });
   }
 });

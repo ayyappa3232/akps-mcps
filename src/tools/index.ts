@@ -17,6 +17,7 @@ import { registerDetectDuplicateCodeTool } from "./detectDuplicateCode.js";
 import { registerDetectBreakingApiChangesTool } from "./detectBreakingApiChanges.js";
 import { registerAnalyzeReactComponentsTool } from "./analyzeReactComponents.js";
 import { registerAnalyzeReactRerendersTool } from "./analyzeReactRerenders.js";
+import { registerAnalyzeApiContractsTool } from "./analyzeApiContracts.js";
 
 export function registerAllTools(server: McpServer): void {
   registerHelloDeveloperTool(server);
@@ -36,4 +37,5 @@ export function registerAllTools(server: McpServer): void {
   registerDetectBreakingApiChangesTool(server);
   registerAnalyzeReactComponentsTool(server);
   registerAnalyzeReactRerendersTool(server);
+  registerAnalyzeApiContractsTool(server);
 }

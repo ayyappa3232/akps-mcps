@@ -28,6 +28,7 @@ import AnalyzeReactComponents from "./modules/reactComponents/AnalyzeReactCompon
 import AnalyzeReactRerenders from "./modules/reactReRenders/AnalyzeReactRerenders";
 import AnalyzeHookDependencies from "./modules/hookDependencies/AnalyzeHookDependencies";
 import DetectBreakingApiChanges from "./modules/breakingAPIChanges/DetectBreakingApiChanges";
+import AnalyzeApiContracts from "./modules/apiContracts/AnalyzeApiContracts";
 
 
 const defaultProjectPath =
@@ -210,7 +211,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts";
   label: string;
   icon: string;
 };
@@ -229,7 +230,8 @@ const developerTools: DeveloperTool[] = [
   { value: "reactComponents", label: "React Components", icon: "⚛" },
   { value: "reactRerenders", label: "Re-render Analyzer", icon: "↻" },
   { value: "hookDependencies", label: "Hook Dependencies", icon: "⚓" },
-  { value: "breakingApiChanges", label: "Breaking API Changes", icon: "⚠" }
+  { value: "breakingApiChanges", label: "Breaking API Changes", icon: "⚠" },
+  { value: "apiContracts", label: "API Contracts", icon: "⇌" }
 ];
 
 function DeveloperToolsSelect({
@@ -500,7 +502,8 @@ export default function App() {
       "reactComponents" |
       "reactRerenders" |
       "hookDependencies" |
-      "breakingApiChanges"
+      "breakingApiChanges" |
+      "apiContracts"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -906,7 +909,8 @@ export default function App() {
                 activeView === "reactComponents" ||
                 activeView === "reactRerenders" ||
                 activeView === "hookDependencies" ||
-                activeView === "breakingApiChanges"
+                activeView === "breakingApiChanges" ||
+                activeView === "apiContracts"
                 ? activeView
                 : null
             }
@@ -1275,6 +1279,13 @@ export default function App() {
 
         {activeView === "breakingApiChanges" && (
           <DetectBreakingApiChanges
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "apiContracts" && (
+          <AnalyzeApiContracts
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />
