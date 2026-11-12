@@ -1398,3 +1398,159 @@
     margin-left: 0;
   }
 }
+
+
+/* ---------- Flow diagram: toolbar, expand mode, groups ---------- */
+
+.sf-graph .react-flow,
+.sf-graph .react-flow.dark {
+  --xy-background-color: #0a101d;
+  --xy-background-color-default: #0a101d;
+  --xy-minimap-background-color: #0d1322;
+  --xy-minimap-background-color-default: #0d1322;
+  background: #0a101d;
+}
+
+.sf-graph .react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid rgba(75, 91, 123, 0.4);
+  border-radius: 8px;
+}
+
+.sf-graph .react-flow__attribution {
+  opacity: 0.55;
+}
+
+.sf-graph-shell {
+  min-width: 0;
+}
+
+.sf-graph-panel {
+  min-width: 0;
+}
+
+.sf-graph-toolbar {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sf-tool-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid rgba(66, 80, 108, 0.4);
+  border-radius: 9px;
+  background: rgba(10, 16, 29, 0.7);
+}
+
+.sf-graph-toolbar button {
+  min-height: 28px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #b8c3d9;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.sf-graph-toolbar button:hover {
+  color: #ffffff;
+  background: rgba(98, 111, 140, 0.22);
+}
+
+.sf-graph-toolbar button:focus-visible {
+  outline: 2px solid #8176ff;
+  outline-offset: 1px;
+}
+
+.sf-graph-toolbar button.active {
+  border-color: rgba(129, 118, 255, 0.55);
+  color: #d9d5ff;
+  background: rgba(91, 78, 213, 0.26);
+}
+
+.sf-graph-toolbar button.icon {
+  width: 28px;
+  padding: 0;
+}
+
+.sf-graph-toolbar button.zoom-reset {
+  min-width: 52px;
+  padding: 0 6px;
+  color: #cbd4e5;
+  font-variant-numeric: tabular-nums;
+}
+
+.sf-graph-toolbar .sf-tool-expand {
+  margin-left: auto;
+  border-color: rgba(66, 80, 108, 0.5);
+}
+
+.sf-legend-box.group {
+  border-color: #63d894;
+  background: rgba(54, 140, 94, 0.18);
+  box-shadow: 2px 2px 0 -1px #0a101d, 2px 2px 0 0 #63d894;
+}
+
+.sf-box p.sf-fine-print-inline {
+  line-height: 1.55;
+}
+
+/* Expanded: a large overlay that fills the window. */
+
+.sf-graph-shell.expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  padding: 24px;
+  display: flex;
+}
+
+.sf-graph-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(4, 8, 16, 0.78);
+  backdrop-filter: blur(2px);
+  cursor: zoom-out;
+}
+
+.sf-graph-shell.expanded .sf-graph-panel {
+  position: relative;
+  width: 100%;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(75, 91, 123, 0.5);
+  border-radius: 14px;
+  background: #0d1322;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.sf-graph-shell.expanded .sf-graph {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (max-width: 760px) {
+  .sf-graph-shell.expanded {
+    padding: 8px;
+  }
+
+  .sf-graph-toolbar .sf-tool-expand {
+    margin-left: 0;
+  }
+}
