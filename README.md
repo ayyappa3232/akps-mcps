@@ -1771,15 +1771,15 @@ Use this section as the project checklist. Update the status from `[ ]` to `[x]`
 #### Phase 4 — Testing Intelligence
 
 - [x] Test Coverage Explorer — `analyzeTestCoverage.ts`
-- [ ] Test Impact Analyzer
-- [ ] Test Generator Assistant
+- [x] Test Impact Analyzer - `analyzeTestImpact.ts`
+- [ ] Test Generator Assistant - Inprogress
 
 **Phase 4: 1/3 complete**
 
 #### Phase 5 — Security Intelligence
 
 - [x] Security Analyzer — `analyzeSecurity.ts`
-- [ ] Secret Detector
+- [x] Secret Detector - `detectSecrets.ts`
 
 **Phase 5: 1/2 complete**
 
