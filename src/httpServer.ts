@@ -26,6 +26,7 @@ import { analyzeHookDependencies } from "./tools/analyzeHookDependencies.js";
 import { analyzeApiContracts } from "./tools/analyzeApiContracts.js";
 import { analyzeStateFlow } from "./tools/analyzeStateFlow.js";
 import { analyzeTestImpact } from "./tools/analyzeTestImpact.js";
+import { detectSecrets } from "./tools/detectSecrets.js";
 
 const app = express();
 const PORT = 4174;
@@ -1727,6 +1728,91 @@ app.post("/api/analyze-state-flow", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to analyze state flow.",
+    });
+  }
+});
+
+app.post("/api/detect-secrets", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      filePath,
+      sensitivity = "balanced",
+      includeTests = true,
+    } = req.body ?? {};
+ 
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+ 
+    if (filePath !== undefined && typeof filePath !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be a string when provided.",
+      });
+    }
+ 
+    if (
+      sensitivity !== "strict" &&
+      sensitivity !== "balanced" &&
+      sensitivity !== "thorough"
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "sensitivity must be strict, balanced, or thorough.",
+      });
+    }
+ 
+    if (typeof includeTests !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeTests must be a boolean.",
+      });
+    }
+ 
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+ 
+    if (
+      typeof filePath === "string" &&
+      (path.isAbsolute(filePath) ||
+        filePath.split(/[\\/]/).includes(".."))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be relative to projectPath.",
+      });
+    }
+ 
+    const report = await detectSecrets(
+      projectPath,
+      typeof filePath === "string" && filePath.trim()
+        ? filePath.trim()
+        : undefined,
+      { sensitivity, includeTests },
+    );
+ 
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "detect_secrets",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to scan for secrets.",
     });
   }
 });

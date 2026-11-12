@@ -31,7 +31,7 @@ import DetectBreakingApiChanges from "./modules/breakingAPIChanges/DetectBreakin
 import AnalyzeApiContracts from "./modules/apiContracts/AnalyzeApiContracts";
 import AnalyzeStateFlow from "./modules/stateFlow/AnalyzeStateFlow";
 import AnalyzeTestImpact from "./modules/testImpact/AnalyzeTestImpact";
-
+import DetectSecrets from "./modules/secretDetector/DetectSecrets";
 
 const defaultProjectPath =
   "/Users/ayyappakumar/Desktop/Ayyappa/Projects/React/My_Projects/PORTFOLIO_PROJECTS/learning-coding-hub";
@@ -213,7 +213,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact" | "secretDetector";
   label: string;
   icon: string;
 };
@@ -235,7 +235,8 @@ const developerTools: DeveloperTool[] = [
   { value: "breakingApiChanges", label: "Breaking API Changes", icon: "⚠" },
   { value: "apiContracts", label: "API Contracts", icon: "⇌" },
   { value: "stateFlow", label: "State Flow", icon: "⇶" },
-  { value: "testImpact", label: "Test Impact", icon: "⚗" }
+  { value: "testImpact", label: "Test Impact", icon: "⚗" },
+  { value: "secretDetector", label: "Secret Detector", icon: "🔑" }
 ];
 
 function DeveloperToolsSelect({
@@ -509,7 +510,8 @@ export default function App() {
       "breakingApiChanges" |
       "apiContracts" |
       "stateFlow" |
-      "testImpact"
+      "testImpact" |
+      "secretDetector"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -918,7 +920,8 @@ export default function App() {
                 activeView === "breakingApiChanges" ||
                 activeView === "apiContracts" ||
                 activeView === "stateFlow" ||
-                activeView === "testImpact"
+                activeView === "testImpact" ||
+                activeView === "secretDetector"
                 ? activeView
                 : null
             }
@@ -1312,6 +1315,13 @@ export default function App() {
 
         {activeView === "testImpact" && (
           <AnalyzeTestImpact
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "secretDetector" && (
+          <DetectSecrets
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />
