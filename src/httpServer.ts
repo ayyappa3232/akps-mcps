@@ -25,6 +25,7 @@ import { analyzeReactRerenders } from "./tools/analyzeReactRerenders.js";
 import { analyzeHookDependencies } from "./tools/analyzeHookDependencies.js";
 import { analyzeApiContracts } from "./tools/analyzeApiContracts.js";
 import { analyzeStateFlow } from "./tools/analyzeStateFlow.js";
+import { analyzeTestImpact } from "./tools/analyzeTestImpact.js";
 
 const app = express();
 const PORT = 4174;
@@ -1133,6 +1134,131 @@ app.post("/api/detect-breaking-api-changes", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to detect breaking API changes.",
+    });
+  }
+});
+
+app.post("/api/analyze-test-impact", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      baseRef,
+      changedFiles,
+      testTypes = "all",
+      maxDepth,
+      includeTypeOnly = true,
+      includeUntracked = true,
+    } = req.body ?? {};
+
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+
+    if (baseRef !== undefined && typeof baseRef !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "baseRef must be a string when provided.",
+      });
+    }
+
+    const cleanBaseRef =
+      typeof baseRef === "string" && baseRef.trim() ? baseRef.trim() : undefined;
+
+    if (
+      cleanBaseRef !== undefined &&
+      (cleanBaseRef.length > 200 ||
+        !/^[A-Za-z0-9_][A-Za-z0-9_.\-/@^~{}:]*$/.test(cleanBaseRef))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "baseRef must be a git branch, tag or commit (letters, digits and . _ - / @ ^ ~ only).",
+      });
+    }
+
+    if (
+      changedFiles !== undefined &&
+      (!Array.isArray(changedFiles) ||
+        changedFiles.length > 200 ||
+        changedFiles.some(
+          (file: unknown) =>
+            typeof file !== "string" ||
+            !file.trim() ||
+            path.isAbsolute(file) ||
+            file.split(/[\\/]/).includes(".."),
+        ))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "changedFiles must be an array of up to 200 relative file paths.",
+      });
+    }
+
+    if (!["all", "unit", "e2e"].includes(testTypes)) {
+      return res.status(400).json({
+        success: false,
+        error: "testTypes must be one of all, unit, or e2e.",
+      });
+    }
+
+    if (
+      maxDepth !== undefined &&
+      (!Number.isInteger(maxDepth) || maxDepth < 1 || maxDepth > 50)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "maxDepth must be a whole number from 1 to 50.",
+      });
+    }
+
+    if (typeof includeTypeOnly !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeTypeOnly must be a boolean.",
+      });
+    }
+
+    if (typeof includeUntracked !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeUntracked must be a boolean.",
+      });
+    }
+
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+
+    const report = await analyzeTestImpact(projectPath, {
+      baseRef: cleanBaseRef,
+      changedFiles: changedFiles?.map((file: string) => file.trim()),
+      testTypes,
+      maxDepth,
+      includeTypeOnly,
+      includeUntracked,
+    });
+
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "analyze_test_impact",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze test impact.",
     });
   }
 });

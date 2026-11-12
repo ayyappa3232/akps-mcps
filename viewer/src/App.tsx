@@ -30,6 +30,7 @@ import AnalyzeHookDependencies from "./modules/hookDependencies/AnalyzeHookDepen
 import DetectBreakingApiChanges from "./modules/breakingAPIChanges/DetectBreakingApiChanges";
 import AnalyzeApiContracts from "./modules/apiContracts/AnalyzeApiContracts";
 import AnalyzeStateFlow from "./modules/stateFlow/AnalyzeStateFlow";
+import AnalyzeTestImpact from "./modules/testImpact/AnalyzeTestImpact";
 
 
 const defaultProjectPath =
@@ -212,7 +213,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact";
   label: string;
   icon: string;
 };
@@ -233,7 +234,8 @@ const developerTools: DeveloperTool[] = [
   { value: "hookDependencies", label: "Hook Dependencies", icon: "⚓" },
   { value: "breakingApiChanges", label: "Breaking API Changes", icon: "⚠" },
   { value: "apiContracts", label: "API Contracts", icon: "⇌" },
-  { value: "stateFlow", label: "State Flow", icon: "⇶" }
+  { value: "stateFlow", label: "State Flow", icon: "⇶" },
+  { value: "testImpact", label: "Test Impact", icon: "⚗" }
 ];
 
 function DeveloperToolsSelect({
@@ -506,7 +508,8 @@ export default function App() {
       "hookDependencies" |
       "breakingApiChanges" |
       "apiContracts" |
-      "stateFlow"
+      "stateFlow" |
+      "testImpact"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -914,7 +917,8 @@ export default function App() {
                 activeView === "hookDependencies" ||
                 activeView === "breakingApiChanges" ||
                 activeView === "apiContracts" ||
-                activeView === "stateFlow"
+                activeView === "stateFlow" ||
+                activeView === "testImpact"
                 ? activeView
                 : null
             }
@@ -955,7 +959,9 @@ export default function App() {
                                           ? "Hook Dependency Analyzer"
                                           : activeView === "breakingApiChanges"
                                             ? "Breaking API Change Detector"
-                                            : "API Explorer"}
+                                            : activeView === "testImpact"
+                                              ? "Test Impact Analyzer"
+                                              : "API Explorer"}
             </h2>
 
             <p>
@@ -989,7 +995,9 @@ export default function App() {
                                           ? "Check useEffect, useMemo, and useCallback dependency arrays, spot stale values and missing cleanup, and get the corrected array."
                                           : activeView === "breakingApiChanges"
                                             ? "Compare a baseline version with your code to find exports and HTTP routes that would break consumers, and see how to migrate safely."
-                                            : "Explore HTTP and Firebase backend communication used by your application."}
+                                            : activeView === "testImpact"
+                                              ? "Find the tests affected by your changes, see why each one runs, and spot changed code that has no test."
+                                              : "Explore HTTP and Firebase backend communication used by your application."}
             </p>
           </div>
 
@@ -1297,6 +1305,13 @@ export default function App() {
 
         {activeView === "stateFlow" && (
           <AnalyzeStateFlow
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "testImpact" && (
+          <AnalyzeTestImpact
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />

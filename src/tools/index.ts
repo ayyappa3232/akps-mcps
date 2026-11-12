@@ -19,6 +19,7 @@ import { registerAnalyzeReactComponentsTool } from "./analyzeReactComponents.js"
 import { registerAnalyzeReactRerendersTool } from "./analyzeReactRerenders.js";
 import { registerAnalyzeApiContractsTool } from "./analyzeApiContracts.js";
 import { registerAnalyzeStateFlowTool } from "./analyzeStateFlow.js";
+import { registerAnalyzeTestImpactTool } from "./analyzeTestImpact.js";
 
 export function registerAllTools(server: McpServer): void {
   registerHelloDeveloperTool(server);
@@ -40,4 +41,5 @@ export function registerAllTools(server: McpServer): void {
   registerAnalyzeReactRerendersTool(server);
   registerAnalyzeApiContractsTool(server);
   registerAnalyzeStateFlowTool(server);
+  registerAnalyzeTestImpactTool(server);
 }
