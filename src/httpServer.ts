@@ -27,6 +27,7 @@ import { analyzeApiContracts } from "./tools/analyzeApiContracts.js";
 import { analyzeStateFlow } from "./tools/analyzeStateFlow.js";
 import { analyzeTestImpact } from "./tools/analyzeTestImpact.js";
 import { detectSecrets } from "./tools/detectSecrets.js";
+import { generateTests } from "./tools/generateTests.js";
 
 const app = express();
 const PORT = 4174;
@@ -1816,6 +1817,88 @@ app.post("/api/detect-secrets", async (req, res) => {
     });
   }
 });
+
+app.post("/api/generate-tests", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      filePath,
+      framework = "auto",
+      includeTested = false,
+    } = req.body ?? {};
+ 
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+ 
+    if (filePath !== undefined && typeof filePath !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be a string when provided.",
+      });
+    }
+ 
+    if (!["auto", "vitest", "jest"].includes(framework)) {
+      return res.status(400).json({
+        success: false,
+        error: "framework must be auto, vitest, or jest.",
+      });
+    }
+ 
+    if (typeof includeTested !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeTested must be a boolean.",
+      });
+    }
+ 
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+ 
+    if (
+      typeof filePath === "string" &&
+      (path.isAbsolute(filePath) ||
+        filePath.split(/[\\/]/).includes(".."))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be relative to projectPath.",
+      });
+    }
+ 
+    const report = await generateTests(
+      projectPath,
+      typeof filePath === "string" && filePath.trim()
+        ? filePath.trim()
+        : undefined,
+      { framework, includeTested },
+    );
+ 
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "generate_tests",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to generate tests.",
+    });
+  }
+});
+
 
 app.listen(PORT, "127.0.0.1", () => {
   console.log(

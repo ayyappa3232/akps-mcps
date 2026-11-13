@@ -21,6 +21,7 @@ import { registerAnalyzeApiContractsTool } from "./analyzeApiContracts.js";
 import { registerAnalyzeStateFlowTool } from "./analyzeStateFlow.js";
 import { registerAnalyzeTestImpactTool } from "./analyzeTestImpact.js";
 import { registerDetectSecretsTool } from "./detectSecrets.js";
+import { registerGenerateTestsTool } from "./generateTests.js";
 
 export function registerAllTools(server: McpServer): void {
   registerHelloDeveloperTool(server);
@@ -44,4 +45,5 @@ export function registerAllTools(server: McpServer): void {
   registerAnalyzeStateFlowTool(server);
   registerAnalyzeTestImpactTool(server);
   registerDetectSecretsTool(server);
+  registerGenerateTestsTool(server);
 }
