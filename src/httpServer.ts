@@ -28,6 +28,7 @@ import { analyzeStateFlow } from "./tools/analyzeStateFlow.js";
 import { analyzeTestImpact } from "./tools/analyzeTestImpact.js";
 import { detectSecrets } from "./tools/detectSecrets.js";
 import { generateTests } from "./tools/generateTests.js";
+import { analyzeGitChanges } from "./tools/analyzeGitChanges.js";
 
 const app = express();
 const PORT = 4174;
@@ -1895,6 +1896,119 @@ app.post("/api/generate-tests", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to generate tests.",
+    });
+  }
+});
+
+app.post("/api/analyze-git-changes", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      mode = "recent",
+      baseRef,
+      headRef,
+      maxCommits = 100,
+      pathFilter,
+      includeUntracked = true,
+    } = req.body ?? {};
+ 
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+ 
+    if (!["recent", "range", "working"].includes(mode)) {
+      return res.status(400).json({
+        success: false,
+        error: "mode must be one of recent, range, or working.",
+      });
+    }
+ 
+    const refPattern = /^[A-Za-z0-9_][A-Za-z0-9_.\-/@^~{}:]*$/;
+ 
+    for (const [name, value] of [
+      ["baseRef", baseRef],
+      ["headRef", headRef],
+    ] as const) {
+      if (value === undefined || value === null || value === "") continue;
+ 
+      if (typeof value !== "string") {
+        return res.status(400).json({
+          success: false,
+          error: `${name} must be a string when provided.`,
+        });
+      }
+ 
+      if (value.trim().length > 200 || !refPattern.test(value.trim())) {
+        return res.status(400).json({
+          success: false,
+          error: `${name} must be a git branch, tag or commit (letters, digits and . _ - / @ ^ ~ only).`,
+        });
+      }
+    }
+ 
+    if (!Number.isInteger(maxCommits) || maxCommits < 1 || maxCommits > 500) {
+      return res.status(400).json({
+        success: false,
+        error: "maxCommits must be a whole number from 1 to 500.",
+      });
+    }
+ 
+    if (pathFilter !== undefined && pathFilter !== null && pathFilter !== "") {
+      if (
+        typeof pathFilter !== "string" ||
+        path.isAbsolute(pathFilter) ||
+        pathFilter.split(/[\\/]/).includes("..")
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "pathFilter must be a relative path inside the project.",
+        });
+      }
+    }
+ 
+    if (typeof includeUntracked !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeUntracked must be a boolean.",
+      });
+    }
+ 
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+ 
+    const clean = (value: unknown) =>
+      typeof value === "string" && value.trim() ? value.trim() : undefined;
+ 
+    const report = await analyzeGitChanges(projectPath, {
+      mode,
+      baseRef: clean(baseRef),
+      headRef: clean(headRef),
+      maxCommits,
+      pathFilter: clean(pathFilter),
+      includeUntracked,
+    });
+ 
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "analyze_git_changes",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze git changes.",
     });
   }
 });

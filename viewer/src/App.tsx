@@ -33,6 +33,7 @@ import AnalyzeStateFlow from "./modules/stateFlow/AnalyzeStateFlow";
 import AnalyzeTestImpact from "./modules/testImpact/AnalyzeTestImpact";
 import DetectSecrets from "./modules/secretDetector/DetectSecrets";
 import GenerateTests from "./modules/testGenerator/GenerateTests";
+import AnalyzeGitChanges from "./modules/gitChanges/AnalyzeGitChanges";
 
 const defaultProjectPath =
   "/Users/ayyappakumar/Desktop/Ayyappa/Projects/React/My_Projects/PORTFOLIO_PROJECTS/learning-coding-hub";
@@ -214,7 +215,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact" | "secretDetector" | "testGenerator";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact" | "secretDetector" | "testGenerator" | "gitChanges";
   label: string;
   icon: string;
 };
@@ -238,7 +239,8 @@ const developerTools: DeveloperTool[] = [
   { value: "stateFlow", label: "State Flow", icon: "⇶" },
   { value: "testImpact", label: "Test Impact", icon: "⚗" },
   { value: "secretDetector", label: "Secret Detector", icon: "🔑" },
-  { value: "testGenerator", label: "Test Generator", icon: "📝" }
+  { value: "testGenerator", label: "Test Generator", icon: "📝" },
+  { value: "gitChanges", label: "Git Changes", icon: "⎇" }
 ];
 
 function DeveloperToolsSelect({
@@ -514,7 +516,8 @@ export default function App() {
       "stateFlow" |
       "testImpact" |
       "secretDetector" |
-      "testGenerator"
+      "testGenerator" |
+      "gitChanges"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -925,7 +928,8 @@ export default function App() {
                 activeView === "stateFlow" ||
                 activeView === "testImpact" ||
                 activeView === "secretDetector" ||
-                activeView === "testGenerator"
+                activeView === "testGenerator" ||
+                activeView === "gitChanges"
                 ? activeView
                 : null
             }
@@ -1333,6 +1337,13 @@ export default function App() {
 
         {activeView === "testGenerator" && (
           <GenerateTests
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "gitChanges" && (
+          <AnalyzeGitChanges
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />
