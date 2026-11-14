@@ -1786,13 +1786,13 @@ Use this section as the project checklist. Update the status from `[ ]` to `[x]`
 #### Phase 6 — Package Intelligence
 
 - [x] Package / Dependency Health Analyzer — `analyzeDependencyHealth.ts`
-- [ ] Dependency Upgrade Impact Analyzer - Inprogress
+- [x] Dependency Upgrade Impact Analyzer - `analyzeUpgradeImpact.ts`
 
 **Phase 6: 1/2 complete**
 
 #### Phase 7 — Git Intelligence
 
-- [ ] Git Change Analyzer
+- [x] Git Change Analyzer - `analyzeGitChanges.ts`
 - [ ] Commit Impact Analyzer
 - [ ] PR Review MCP
 

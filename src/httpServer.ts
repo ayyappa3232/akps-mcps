@@ -29,6 +29,7 @@ import { analyzeTestImpact } from "./tools/analyzeTestImpact.js";
 import { detectSecrets } from "./tools/detectSecrets.js";
 import { generateTests } from "./tools/generateTests.js";
 import { analyzeGitChanges } from "./tools/analyzeGitChanges.js";
+import { analyzeUpgradeImpact } from "./tools/analyzeUpgradeImpact.js";
 
 const app = express();
 const PORT = 4174;
@@ -2013,6 +2014,103 @@ app.post("/api/analyze-git-changes", async (req, res) => {
   }
 });
 
+app.post("/api/analyze-upgrade-impact", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      packageName,
+      strategy = "latest",
+      checkRegistry = true,
+      includeDev = true,
+      targets = {},
+    } = req.body ?? {};
+ 
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+ 
+    if (packageName !== undefined && typeof packageName !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "packageName must be a string when provided.",
+      });
+    }
+ 
+    if (
+      strategy !== "latest" &&
+      strategy !== "next-major" &&
+      strategy !== "compatible"
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "strategy must be latest, next-major, or compatible.",
+      });
+    }
+ 
+    if (typeof checkRegistry !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "checkRegistry must be a boolean.",
+      });
+    }
+ 
+    if (typeof includeDev !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeDev must be a boolean.",
+      });
+    }
+ 
+    if (
+      targets === null ||
+      typeof targets !== "object" ||
+      Array.isArray(targets) ||
+      Object.keys(targets).length > 100 ||
+      Object.values(targets).some(
+        (version) => typeof version !== "string" || version.length > 80,
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "targets must map package names to version strings.",
+      });
+    }
+ 
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+ 
+    const report = await analyzeUpgradeImpact(
+      projectPath,
+      typeof packageName === "string" && packageName.trim()
+        ? packageName.trim()
+        : undefined,
+      { strategy, checkRegistry, includeDev, targets },
+    );
+ 
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "analyze_upgrade_impact",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze upgrade impact.",
+    });
+  }
+});
 
 app.listen(PORT, "127.0.0.1", () => {
   console.log(

@@ -34,6 +34,7 @@ import AnalyzeTestImpact from "./modules/testImpact/AnalyzeTestImpact";
 import DetectSecrets from "./modules/secretDetector/DetectSecrets";
 import GenerateTests from "./modules/testGenerator/GenerateTests";
 import AnalyzeGitChanges from "./modules/gitChanges/AnalyzeGitChanges";
+import AnalyzeUpgradeImpact from "./modules/upgradeImpact/AnalyzeUpgradeImpact";
 
 const defaultProjectPath =
   "/Users/ayyappakumar/Desktop/Ayyappa/Projects/React/My_Projects/PORTFOLIO_PROJECTS/learning-coding-hub";
@@ -215,7 +216,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact" | "secretDetector" | "testGenerator" | "gitChanges";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact" | "secretDetector" | "testGenerator" | "gitChanges" | "upgradeImpact";
   label: string;
   icon: string;
 };
@@ -240,7 +241,8 @@ const developerTools: DeveloperTool[] = [
   { value: "testImpact", label: "Test Impact", icon: "⚗" },
   { value: "secretDetector", label: "Secret Detector", icon: "🔑" },
   { value: "testGenerator", label: "Test Generator", icon: "📝" },
-  { value: "gitChanges", label: "Git Changes", icon: "⎇" }
+  { value: "gitChanges", label: "Git Changes", icon: "⎇" },
+  { value: "upgradeImpact", label: "Upgrade Impact", icon: "⇧" }
 ];
 
 function DeveloperToolsSelect({
@@ -517,7 +519,8 @@ export default function App() {
       "testImpact" |
       "secretDetector" |
       "testGenerator" |
-      "gitChanges"
+      "gitChanges" | 
+      "upgradeImpact"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -929,7 +932,8 @@ export default function App() {
                 activeView === "testImpact" ||
                 activeView === "secretDetector" ||
                 activeView === "testGenerator" ||
-                activeView === "gitChanges"
+                activeView === "gitChanges" ||
+                activeView === "upgradeImpact"
                 ? activeView
                 : null
             }
@@ -1344,6 +1348,13 @@ export default function App() {
 
         {activeView === "gitChanges" && (
           <AnalyzeGitChanges
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "upgradeImpact" && (
+          <AnalyzeUpgradeImpact
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />
