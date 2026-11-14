@@ -1,18 +1,29 @@
 {
   "name": "developer-productivity-mcp",
   "version": "1.0.0",
-  "description": "",
+  "description": "Developer productivity MCP server with React-based viewer and HTTP bridge",
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start-mcp-inspector": "npx @modelcontextprotocol/inspector@latest node dist/index.js",
     "viewer": "vite viewer --config viewer/vite.config.ts",
-    "http": "tsx watch --clear-screen=false src/httpServer.ts"
+    "http": "tsx watch --clear-screen=false src/httpServer.ts",
+    "test": "vitest --config viewer/vite.config.ts",
+    "test:watch": "vitest --config viewer/vite.config.ts",
+    "test:coverage": "vitest run --config viewer/vite.config.ts --coverage",
+    "test:ui": "vitest --config viewer/vite.config.ts --ui"
   },
-  "keywords": [],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "developer-tools",
+    "productivity",
+    "react",
+    "typescript",
+    "vitest"
+  ],
   "author": "",
   "license": "ISC",
   "type": "module",
@@ -28,8 +39,11 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.6",
+    "@vitest/coverage-v8": "^5.1.0",
+    "jsdom": "^29.1.1",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
   }
 }
