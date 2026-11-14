@@ -24,6 +24,7 @@ import { registerDetectSecretsTool } from "./detectSecrets.js";
 import { registerGenerateTestsTool } from "./generateTests.js";
 import { registerAnalyzeGitChangesTool } from "./analyzeGitChanges.js";
 import { registerAnalyzeUpgradeImpactTool } from "./analyzeUpgradeImpact.js";
+import { registerReviewPullRequestTool } from "./reviewPullRequest.js";
 
 export function registerAllTools(server: McpServer): void {
   registerHelloDeveloperTool(server);
@@ -50,4 +51,5 @@ export function registerAllTools(server: McpServer): void {
   registerGenerateTestsTool(server);
   registerAnalyzeGitChangesTool(server);
   registerAnalyzeUpgradeImpactTool(server);
+  registerReviewPullRequestTool(server);
 }

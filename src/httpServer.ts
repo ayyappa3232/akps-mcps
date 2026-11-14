@@ -30,6 +30,7 @@ import { detectSecrets } from "./tools/detectSecrets.js";
 import { generateTests } from "./tools/generateTests.js";
 import { analyzeGitChanges } from "./tools/analyzeGitChanges.js";
 import { analyzeUpgradeImpact } from "./tools/analyzeUpgradeImpact.js";
+import { reviewPullRequest } from "./tools/reviewPullRequest.js";
 
 const app = express();
 const PORT = 4174;
@@ -2108,6 +2109,104 @@ app.post("/api/analyze-upgrade-impact", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to analyze upgrade impact.",
+    });
+  }
+});
+
+app.post("/api/review-pull-request", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      baseRef,
+      headRef,
+      strictness = "normal",
+      runTestImpact = true,
+      runBreakingApi = true,
+    } = req.body ?? {};
+ 
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+ 
+    const refPattern = /^[A-Za-z0-9_][A-Za-z0-9_.\-/@^~{}:]*$/;
+ 
+    for (const [name, value] of [
+      ["baseRef", baseRef],
+      ["headRef", headRef],
+    ] as const) {
+      if (value === undefined || value === null || value === "") continue;
+ 
+      if (typeof value !== "string") {
+        return res.status(400).json({
+          success: false,
+          error: `${name} must be a string when provided.`,
+        });
+      }
+ 
+      if (value.trim().length > 200 || !refPattern.test(value.trim())) {
+        return res.status(400).json({
+          success: false,
+          error: `${name} must be a git branch, tag or commit (letters, digits and . _ - / @ ^ ~ only).`,
+        });
+      }
+    }
+ 
+    if (!["relaxed", "normal", "strict"].includes(strictness)) {
+      return res.status(400).json({
+        success: false,
+        error: "strictness must be one of relaxed, normal, or strict.",
+      });
+    }
+ 
+    if (typeof runTestImpact !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "runTestImpact must be a boolean.",
+      });
+    }
+ 
+    if (typeof runBreakingApi !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "runBreakingApi must be a boolean.",
+      });
+    }
+ 
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+ 
+    const clean = (value: unknown) =>
+      typeof value === "string" && value.trim() ? value.trim() : undefined;
+ 
+    const review = await reviewPullRequest(projectPath, {
+      baseRef: clean(baseRef),
+      headRef: clean(headRef),
+      strictness,
+      runTestImpact,
+      runBreakingApi,
+    });
+ 
+    return res.json(review);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "review_pull_request",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to review the pull request.",
     });
   }
 });

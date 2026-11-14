@@ -35,6 +35,7 @@ import DetectSecrets from "./modules/secretDetector/DetectSecrets";
 import GenerateTests from "./modules/testGenerator/GenerateTests";
 import AnalyzeGitChanges from "./modules/gitChanges/AnalyzeGitChanges";
 import AnalyzeUpgradeImpact from "./modules/upgradeImpact/AnalyzeUpgradeImpact";
+import ReviewPullRequest from "./modules/prReview/ReviewPullRequest";
 
 const defaultProjectPath =
   "/Users/ayyappakumar/Desktop/Ayyappa/Projects/React/My_Projects/PORTFOLIO_PROJECTS/learning-coding-hub";
@@ -216,7 +217,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact" | "secretDetector" | "testGenerator" | "gitChanges" | "upgradeImpact";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact" | "secretDetector" | "testGenerator" | "gitChanges" | "upgradeImpact" | "prReview";
   label: string;
   icon: string;
 };
@@ -242,7 +243,8 @@ const developerTools: DeveloperTool[] = [
   { value: "secretDetector", label: "Secret Detector", icon: "🔑" },
   { value: "testGenerator", label: "Test Generator", icon: "📝" },
   { value: "gitChanges", label: "Git Changes", icon: "⎇" },
-  { value: "upgradeImpact", label: "Upgrade Impact", icon: "⇧" }
+  { value: "upgradeImpact", label: "Upgrade Impact", icon: "⇧" },
+  { value: "prReview", label: "PR Review", icon: "⚖" }
 ];
 
 function DeveloperToolsSelect({
@@ -519,8 +521,9 @@ export default function App() {
       "testImpact" |
       "secretDetector" |
       "testGenerator" |
-      "gitChanges" | 
-      "upgradeImpact"
+      "gitChanges" |
+      "upgradeImpact" |
+      "prReview"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -933,7 +936,8 @@ export default function App() {
                 activeView === "secretDetector" ||
                 activeView === "testGenerator" ||
                 activeView === "gitChanges" ||
-                activeView === "upgradeImpact"
+                activeView === "upgradeImpact" ||
+                activeView === "prReview"
                 ? activeView
                 : null
             }
@@ -1355,6 +1359,13 @@ export default function App() {
 
         {activeView === "upgradeImpact" && (
           <AnalyzeUpgradeImpact
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "prReview" && (
+          <ReviewPullRequest
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />
