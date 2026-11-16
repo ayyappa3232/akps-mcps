@@ -22,7 +22,7 @@ type UnitKind = "function" | "method" | "component" | "hook";
 type TestStatus = "untested" | "partial" | "tested";
 type FrameworkName = "vitest" | "jest";
 type FrameworkChoice = "auto" | FrameworkName;
-type AssertionLevel = "exact" | "shape" | "scaffold";
+type AssertionLevel = "exact" | "shape" | "scaffold" | "exercise";
 
 type ScenarioCategory =
   | "happy"
@@ -191,6 +191,7 @@ const CATEGORY_LABEL: Record<ScenarioCategory, string> = {
 const ASSERTION_LABEL: Record<AssertionLevel, { label: string; tone: "ok" | "neutral" | "warn" }> = {
   exact: { label: "Exact value", tone: "ok" },
   shape: { label: "Type or no-throw check", tone: "neutral" },
+  exercise: { label: "Runs the code", tone: "neutral" },
   scaffold: { label: "Add your value", tone: "warn" },
 };
 

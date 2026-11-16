@@ -30,8 +30,10 @@ type ScenarioCategory =
  * exact    - the expected value comes straight from the source code.
  * shape    - checks a type or "does not throw"; correct without knowing the value.
  * scaffold - the developer must add the expected value.
+ * exercise - runs the code with many input variants so every branch executes;
+ *            it only checks that nothing crashes, so add assertions that matter.
  */
-type AssertionLevel = "exact" | "shape" | "scaffold";
+type AssertionLevel = "exact" | "shape" | "scaffold" | "exercise";
 
 interface ParamInfo {
   name: string;
@@ -236,7 +238,7 @@ const MAX_FILES = 5_000;
 const MAX_FILE_BYTES = 1_000_000;
 const MAX_TARGETS = 150;
 const MAX_FILES_OUTPUT = 60;
-const MAX_SCENARIOS_PER_UNIT = 14;
+const MAX_SCENARIOS_PER_UNIT = 40;
 const MAX_SNIPPET_LINES = 40;
 const MAX_HOTSPOTS = 15;
 const MAX_WARNINGS = 25;
@@ -993,6 +995,522 @@ interface Unit {
   propsTypeNode?: ts.TypeNode;
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Rich, type-driven fixtures                                                */
+/* -------------------------------------------------------------------------- */
+
+const MAX_VARIANTS = 12;
+let richItemCap = MAX_VARIANTS;
+/** When set, top-level lists get exactly this many items (to cross "show more" thresholds). */
+let forcedListLength: number | undefined;
+
+/** Values the source compares fields against, used as boundary values in fixtures. */
+let literalHints = new Map<string, { strings: string[]; numbers: number[] }>();
+
+function collectLiteralHints(text: string): Map<string, { strings: string[]; numbers: number[] }> {
+  const hints = new Map<string, { strings: string[]; numbers: number[] }>();
+  const entry = (name: string) => {
+    const existing = hints.get(name) ?? { strings: [], numbers: [] };
+    hints.set(name, existing);
+    return existing;
+  };
+
+  for (const match of text.matchAll(/([A-Za-z_$][\w$]*)\s*(?:===|!==|==|!=)\s*(["'])((?:(?!\2)[^\n\\]){1,40})\2/g)) {
+    const target = entry(match[1]);
+    if (!target.strings.includes(match[3]) && target.strings.length < 6) target.strings.push(match[3]);
+  }
+
+  for (const match of text.matchAll(/([A-Za-z_$][\w$]*)\s*(?:===|!==|>=|<=|>|<)\s*(-?\d{1,6})\b/g)) {
+    const target = entry(match[1]);
+    for (const value of [Number(match[2]), Number(match[2]) + 1]) {
+      if (!target.numbers.includes(value) && target.numbers.length < 6) target.numbers.push(value);
+    }
+  }
+
+  return hints;
+}
+
+function isNullishTypeNode(node: ts.TypeNode): boolean {
+  return (
+    node.kind === ts.SyntaxKind.NullKeyword ||
+    node.kind === ts.SyntaxKind.UndefinedKeyword ||
+    (ts.isLiteralTypeNode(node) && node.literal.kind === ts.SyntaxKind.NullKeyword)
+  );
+}
+
+function objectKey(key: string): string {
+  return /^[A-Za-z_$][\w$]*$/.test(key) ? key : quote(key);
+}
+
+function literalKeys(node: ts.TypeNode | undefined, sc: SampleCtx, depth = 0): string[] | undefined {
+  if (!node || depth > 3) return undefined;
+  if (ts.isParenthesizedTypeNode(node)) return literalKeys(node.type, sc, depth + 1);
+  if (ts.isLiteralTypeNode(node) && ts.isStringLiteral(node.literal)) return [node.literal.text];
+
+  if (ts.isUnionTypeNode(node)) {
+    const keys: string[] = [];
+    for (const member of node.types) {
+      const found = literalKeys(member, sc, depth + 1);
+      if (!found) return undefined;
+      keys.push(...found);
+    }
+    return keys;
+  }
+
+  if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+    const declaration = lookupTopLevel(sc.file, node.typeName.text, sc.ctx);
+    if (declaration && ts.isTypeAliasDeclaration(declaration.node)) {
+      return literalKeys(declaration.node.type, { ...sc, file: declaration.file }, depth + 1);
+    }
+  }
+
+  return undefined;
+}
+
+/** How many different values a type can take, so arrays can show each one. */
+function variantCount(node: ts.TypeNode | undefined, sc: SampleCtx, depth = 0): number {
+  if (!node || depth > 7) return 1;
+  if (ts.isParenthesizedTypeNode(node)) return variantCount(node.type, sc, depth);
+  if (node.kind === ts.SyntaxKind.BooleanKeyword || node.kind === ts.SyntaxKind.NumberKeyword) return 2;
+
+  if (ts.isUnionTypeNode(node)) {
+    let total = 0;
+    for (const member of node.types) total += isNullishTypeNode(member) ? 1 : variantCount(member, sc, depth);
+    return Math.min(MAX_VARIANTS, total);
+  }
+
+  if (ts.isArrayTypeNode(node)) return variantCount(node.elementType, sc, depth + 1);
+  if (ts.isTypeLiteralNode(node)) return objectVariantCount(node.members, sc, depth);
+
+  if (ts.isTypeReferenceNode(node)) {
+    const reference = typeName(node);
+    const args = node.typeArguments ?? [];
+
+    if (reference === "Array" || reference === "ReadonlyArray") return variantCount(args[0], sc, depth + 1);
+    if (reference === "Record") return variantCount(args[1], sc, depth + 1);
+
+    const declaration = ts.isIdentifier(node.typeName) ? lookupTopLevel(sc.file, node.typeName.text, sc.ctx) : undefined;
+    if (!declaration) return 1;
+
+    const members = membersOf(declaration.node);
+    if (members) return objectVariantCount(members, { ...sc, file: declaration.file }, depth);
+    if (ts.isTypeAliasDeclaration(declaration.node)) {
+      return variantCount(declaration.node.type, { ...sc, file: declaration.file }, depth);
+    }
+    if (ts.isEnumDeclaration(declaration.node)) return Math.min(MAX_VARIANTS, declaration.node.members.length);
+  }
+
+  return 1;
+}
+
+function objectVariantCount(
+  members: ReadonlyArray<ts.TypeElement | ts.ClassElement>,
+  sc: SampleCtx,
+  depth: number,
+): number {
+  let most = 1;
+
+  for (const member of members) {
+    if (!ts.isPropertySignature(member) && !ts.isPropertyDeclaration(member)) continue;
+    most = Math.max(most, variantCount(member.type, sc, depth + 1) + (member.questionToken ? 1 : 0));
+  }
+
+  return Math.min(MAX_VARIANTS, most);
+}
+
+function richObject(
+  members: ReadonlyArray<ts.TypeElement | ts.ClassElement>,
+  sc: SampleCtx,
+  index: number,
+  mode: "rich" | "empty",
+  depth: number,
+): string {
+  const entries: string[] = [];
+  let position = 0;
+
+  for (const member of members) {
+    position++;
+
+    if (ts.isPropertySignature(member) || ts.isPropertyDeclaration(member)) {
+      const key = propertyNameText(member.name);
+      if (!key) continue;
+
+      // Optional fields alternate between present and absent.
+      if (member.questionToken && (mode === "empty" || (index + position) % 2 === 1)) continue;
+
+      entries.push(`${objectKey(key)}: ${richSample(member.type, key, sc, index + position, mode, depth + 1)}`);
+    } else if (ts.isMethodSignature(member)) {
+      const key = propertyNameText(member.name);
+      if (key) entries.push(`${objectKey(key)}: ${sc.d.vi}.fn()`);
+    }
+  }
+
+  return entries.length ? `{ ${entries.join(", ")} }` : "{}";
+}
+
+function richArray(
+  element: ts.TypeNode | undefined,
+  name: string,
+  sc: SampleCtx,
+  index: number,
+  mode: "rich" | "empty",
+  depth: number,
+): string {
+  if (mode === "empty") return "[]";
+
+  // Nested lists are sometimes empty, so "nothing to show" branches run too.
+  if (depth >= 2 && index % 3 === 2) return "[]";
+
+  const count =
+    forcedListLength !== undefined && depth <= 1
+      ? forcedListLength
+      : Math.min(richItemCap, Math.max(3, variantCount(element, sc, depth + 1)));
+  const items = Array.from({ length: count }, (_, item) => richSample(element, name, sc, index + item, mode, depth + 1));
+
+  return `[${items.join(", ")}]`;
+}
+
+/**
+ * Like `sampleFromType`, but varies the value with `index`: every union member,
+ * both booleans, zero and non-zero numbers, empty strings, present and absent
+ * optional fields, and arrays that show each variant. Running a component with
+ * this data executes the branches that depend on the data.
+ */
+function richSample(
+  node: ts.TypeNode | undefined,
+  name: string,
+  sc: SampleCtx,
+  index: number,
+  mode: "rich" | "empty",
+  depth = 0,
+): string {
+  if (!node) return sampleFromType(undefined, name, sc);
+  if (depth > 7) return castAny("{}", sc);
+
+  const empty = mode === "empty";
+
+  switch (node.kind) {
+    case ts.SyntaxKind.StringKeyword: {
+      if (empty) return sampleForName(name);
+
+      const choices = [sampleForName(name), ...(literalHints.get(name)?.strings.map((value) => quote(value)) ?? []), '""'];
+      return choices[index % choices.length];
+    }
+    case ts.SyntaxKind.NumberKeyword: {
+      if (empty) return "0";
+
+      const choices = [sampleNumber(name), "0", ...(literalHints.get(name)?.numbers.map(String) ?? [])];
+      return [...new Set(choices)][index % new Set(choices).size];
+    }
+    case ts.SyntaxKind.BooleanKeyword:
+      // Flags such as `success` or `ok` are true in a normal response.
+      if (/^(success|ok|succeeded|valid)$/i.test(name)) return "true";
+      return empty ? "false" : index % 2 === 0 ? "true" : "false";
+    default:
+      break;
+  }
+
+  if (ts.isParenthesizedTypeNode(node)) return richSample(node.type, name, sc, index, mode, depth);
+  if (ts.isArrayTypeNode(node)) return richArray(node.elementType, name, sc, index, mode, depth);
+  if (ts.isTypeLiteralNode(node)) return richObject(node.members, sc, index, mode, depth);
+
+  if (ts.isUnionTypeNode(node)) {
+    const members = node.types.filter((member) => !isNullishTypeNode(member));
+    const nullish = node.types.find(isNullishTypeNode);
+    if (members.length === 0) return "undefined";
+    if (empty) return richSample(members[0], name, sc, 0, mode, depth);
+
+    const position = index % (members.length + (nullish ? 1 : 0));
+    if (nullish && position === members.length) {
+      return nullish.kind === ts.SyntaxKind.UndefinedKeyword ? "undefined" : "null";
+    }
+
+    return richSample(members[position], name, sc, index, mode, depth);
+  }
+
+  if (ts.isIntersectionTypeNode(node)) return richSample(node.types[0], name, sc, index, mode, depth);
+
+  if (ts.isTypeReferenceNode(node)) {
+    const reference = typeName(node);
+    const args = node.typeArguments ?? [];
+
+    if (reference === "Array" || reference === "ReadonlyArray") return richArray(args[0], name, sc, index, mode, depth);
+    if (reference === "Promise") return `Promise.resolve(${richSample(args[0], name, sc, index, mode, depth + 1)})`;
+    if (reference === "Partial") return "{}";
+    if (["Readonly", "Required", "Pick", "Omit"].includes(reference)) {
+      return richSample(args[0], name, sc, index, mode, depth);
+    }
+
+    if (reference === "Record") {
+      const keys = literalKeys(args[0], sc);
+      if (keys && keys.length > 0) {
+        return `{ ${keys
+          .map((key, position) => `${objectKey(key)}: ${richSample(args[1], key, sc, index + position, mode, depth + 1)}`)
+          .join(", ")} }`;
+      }
+      return `{ key: ${richSample(args[1], name, sc, index, mode, depth + 1)} }`;
+    }
+
+    if (BUILTIN_TYPE_SAMPLES[reference] || reference === "Function") return sampleFromType(node, name, sc, 0);
+
+    const declaration = ts.isIdentifier(node.typeName) ? lookupTopLevel(sc.file, node.typeName.text, sc.ctx) : undefined;
+
+    if (declaration) {
+      const typed: SampleCtx = { ...sc, file: declaration.file };
+      const members = membersOf(declaration.node);
+
+      if (members) return richObject(members, typed, index, mode, depth);
+      if (ts.isTypeAliasDeclaration(declaration.node)) {
+        return richSample(declaration.node.type, name, typed, index, mode, depth);
+      }
+
+      if (ts.isEnumDeclaration(declaration.node)) {
+        const values = declaration.node.members.map((member, position) =>
+          member.initializer && (ts.isStringLiteral(member.initializer) || ts.isNumericLiteral(member.initializer))
+            ? member.initializer.getText()
+            : String(position),
+        );
+        return values[empty ? 0 : index % Math.max(1, values.length)] ?? "0";
+      }
+    }
+  }
+
+  // Leaf types (literals, functions, ...) need no nesting limit of their own.
+  return sampleFromType(node, name, sc, 0);
+}
+
+function buildFixtures(
+  type: ts.TypeNode,
+  sc: SampleCtx,
+): { rich0: string; rich1: string; empty: string; long?: string } {
+  try {
+    for (const cap of [MAX_VARIANTS, 6, 3]) {
+      richItemCap = cap;
+      const rich0 = richSample(type, "response", sc, 0, "rich");
+      const rich1 = richSample(type, "response", sc, 1, "rich");
+      const empty = richSample(type, "response", sc, 0, "empty");
+
+      if (rich0.length + rich1.length < 24_000 || cap === 3) {
+        // A long list crosses "show more" thresholds such as `items.length > 12`.
+        forcedListLength = 15;
+        richItemCap = 3;
+        const long = richSample(type, "response", sc, 0, "rich");
+        forcedListLength = undefined;
+
+        return { rich0, rich1, empty, long: long.length < 60_000 && long !== rich0 ? long : undefined };
+      }
+    }
+  } finally {
+    richItemCap = MAX_VARIANTS;
+    forcedListLength = undefined;
+  }
+
+  return { rich0: "{}", rich1: "{}", empty: "{}" };
+}
+
+/** `data as ReportType` after `await response.json()` tells us the response shape. */
+function inferResponseType(fn: FnNode): ts.TypeNode | undefined {
+  const jsonVariables = new Set<string>();
+
+  walk(fn, (node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      /\.json\(\)/.test(node.initializer.getText())
+    ) {
+      jsonVariables.add(node.name.text);
+    }
+  });
+
+  let found: ts.TypeNode | undefined;
+
+  walk(fn, (node) => {
+    if (found || !ts.isAsExpression(node) || !ts.isTypeReferenceNode(node.type)) return;
+    const inner = unwrapExpr(node.expression);
+
+    if ((ts.isIdentifier(inner) && jsonVariables.has(inner.text)) || /\.json\(\)/.test(inner.getText())) {
+      found = node.type;
+    }
+  });
+
+  return found;
+}
+
+function fetchStubLineWith(env: Env, method: "mockResolvedValue" | "mockRejectedValue", value: string): string {
+  return env.d.name === "vitest"
+    ? `vi.stubGlobal("fetch", vi.fn().${method}(${value}));`
+    : `global.fetch = jest.fn().${method}(${value})${env.file.isTs ? " as unknown as typeof fetch" : ""};`;
+}
+
+/* ---- helper functions written into the generated test file ---- */
+
+function flushHelper(isTs: boolean): string {
+  void isTs;
+  return [
+    "async function flushPromises() {",
+    "  for (let i = 0; i < 5; i++) {",
+    "    await act(async () => {",
+    "      await Promise.resolve();",
+    "    });",
+    "  }",
+    "}",
+  ].join("\n");
+}
+
+function exerciseHelper(isTs: boolean): string {
+  const el = isTs ? "<HTMLElement>" : "";
+  const select = isTs ? "<HTMLSelectElement>" : "";
+  const input = isTs ? "<HTMLInputElement>" : "";
+  const disabled = isTs ? "(target as HTMLButtonElement).disabled" : "target.disabled";
+
+  return [
+    "// Fills every field (valid, invalid and empty values), presses Enter/Escape, picks every select",
+    "// option and clicks every control, re-reading the page after each click so controls that",
+    "// appear along the way are used too. This runs the handlers and the branches behind them.",
+    "async function exerciseControls(rounds = 3) {",
+    '  const values = ["sample", "bad value!?", ""];',
+    "  const clickable =",
+    "    'button, [role=\"button\"], [role=\"option\"], [role=\"menuitem\"], [role=\"tab\"], [role=\"switch\"], [role=\"checkbox\"], [role=\"radio\"], summary';",
+    "",
+    "  for (let round = 0; round < rounds; round++) {",
+    "    const value = values[round % values.length];",
+    "",
+    `    for (const field of Array.from(document.body.querySelectorAll${input}("input, textarea"))) {`,
+    '      if (!field.isConnected || field.disabled || field.type === "file") continue;',
+    '      if (field.type === "checkbox" || field.type === "radio") {',
+    "        fireEvent.click(field);",
+    "        continue;",
+    "      }",
+    "      fireEvent.focus(field);",
+    "      fireEvent.change(field, { target: { value } });",
+    '      fireEvent.keyDown(field, { key: "Enter" });',
+    '      fireEvent.keyDown(field, { key: "Escape" });',
+    "      fireEvent.blur(field);",
+    "    }",
+    "",
+    `    for (const menu of Array.from(document.body.querySelectorAll${select}("select"))) {`,
+    "      for (const option of Array.from(menu.options)) {",
+    "        if (menu.isConnected) fireEvent.change(menu, { target: { value: option.value } });",
+    "      }",
+    "    }",
+    "",
+    "    for (let index = 0; index < 100; index++) {",
+    `      const target = Array.from(document.body.querySelectorAll${el}(clickable))[index];`,
+    "      if (!target) break;",
+    `      if (target.isConnected && !${disabled} && target.getAttribute("aria-disabled") !== "true") {`,
+    "        fireEvent.click(target);",
+    "      }",
+    "      if (index % 8 === 7) await flushPromises();",
+    "    }",
+    "    await flushPromises();",
+    "  }",
+    "}",
+  ].join("\n");
+}
+
+function browserStubsHelper(isTs: boolean): string {
+  const any = isTs ? " as any" : "";
+  const globalType = isTs ? "globalThis as any" : "globalThis";
+
+  return [
+    "// jsdom does not implement these browser APIs, which charts, graphs and menus rely on.",
+    "function installBrowserStubs() {",
+    `  const target = ${globalType};`,
+    "  target.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };",
+    "  target.IntersectionObserver ??= class { observe() {} unobserve() {} disconnect() {} takeRecords() { return []; } };",
+    "  if (!window.matchMedia) {",
+    "    window.matchMedia = ((query" + (isTs ? ": string" : "") + ") => ({",
+    "      matches: false, media: query, onchange: null,",
+    "      addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},",
+    "      dispatchEvent() { return false; },",
+    `    }))${any};`,
+    "  }",
+    "  Element.prototype.scrollIntoView ??= function () {};",
+    `  window.scrollTo ??= (() => {})${any};`,
+    "}",
+  ].join("\n");
+}
+
+function attemptHelpers(isTs: boolean): string {
+  const run = isTs ? "run: () => unknown" : "run";
+  const ret = isTs ? ": { error?: unknown }" : "";
+  const retAsync = isTs ? ": Promise<{ error?: unknown }>" : "";
+
+  return [
+    "// Runs code and reports a failure instead of throwing, so one bad input cannot hide the rest.",
+    `function attempt(${run})${ret} {`,
+    "  try {",
+    "    run();",
+    "    return {};",
+    "  } catch (error) {",
+    "    return { error };",
+    "  }",
+    "}",
+    "",
+    `async function attemptAsync(${run})${retAsync} {`,
+    "  try {",
+    "    await run();",
+    "    return {};",
+    "  } catch (error) {",
+    "    return { error };",
+    "  }",
+    "}",
+  ].join("\n");
+}
+
+function paramVariantTexts(param: PlanParam, sc: SampleCtx): string[] {
+  const typed: SampleCtx = { ...sc, file: param.typeFile };
+  let list: string[];
+
+  if (param.fields && !param.typeNode) {
+    list = [renderParam(param, newPlan(), sc)];
+  } else if (param.typeNode) {
+    const count = Math.max(2, Math.min(8, variantCount(param.typeNode, typed)));
+    list = Array.from({ length: count }, (_, index) => richSample(param.typeNode, param.name, typed, index, "rich"));
+  } else {
+    const kind = param.kindHint ?? valueKindOf(undefined, param.name);
+    list =
+      kind === "boolean"
+        ? ["true", "false"]
+        : kind === "number"
+          ? ["1", "0", "-1"]
+          : kind === "array"
+            ? ["[]", '["sample"]']
+            : kind === "function"
+              ? [`${sc.d.vi}.fn()`]
+              : [sampleForName(param.name), '""'];
+  }
+
+  if (param.optional && !list.includes("undefined")) list.push("undefined");
+
+  return [...new Set(list)].slice(0, 10);
+}
+
+/** Argument lists that vary one parameter at a time, then all of them together. */
+function argumentCombinations(params: PlanParam[], sc: SampleCtx): string[] {
+  const usable = params.filter((param) => !param.rest);
+  const lists = usable.map((param) => paramVariantTexts(param, sc));
+  const longest = Math.max(1, ...lists.map((list) => list.length));
+  const combos = new Set<string>();
+
+  const build = (pick: (list: string[], position: number) => string) =>
+    lists.map((list, position) => pick(list, position)).join(", ");
+
+  lists.forEach((list, target) => {
+    if (list.length < 2) return;
+    list.forEach((value) => combos.add(build((entries, position) => (position === target ? value : entries[0]))));
+  });
+
+  for (let offset = 0; offset < 2; offset++) {
+    for (let index = 0; index < longest; index++) {
+      combos.add(build((entries) => entries[(index + offset) % entries.length]));
+    }
+  }
+
+  return [...combos].slice(0, 24);
+}
+
 function containsJsx(node: ts.Node | undefined): boolean {
   if (!node) return false;
   let found = false;
@@ -1147,12 +1665,14 @@ interface Needs {
   defaultName?: string;
   extraImports: Set<string>;
   moduleMocks: Set<string>;
+  /** Helper functions written once at the top of the generated file. */
+  helpers: Set<string>;
   jsdom: boolean;
   router?: string;
 }
 
 function emptyNeeds(): Needs {
-  return { named: new Set(), extraImports: new Set(), moduleMocks: new Set(), jsdom: false };
+  return { named: new Set(), extraImports: new Set(), moduleMocks: new Set(), helpers: new Set(), jsdom: false };
 }
 
 function importPathTo(env: Env, targetAbs: string): string {
@@ -2077,8 +2597,12 @@ interface DepSetup {
   failingLabel?: string;
 }
 
-function itBlock(title: string, isAsync: boolean, body: string[]): string[] {
-  return [`it(${quote(title)}, ${isAsync ? "async " : ""}() => {`, ...indentLines(body, 2), "});"];
+function itBlock(title: string, isAsync: boolean, body: string[], timeoutMs?: number): string[] {
+  return [
+    `it(${quote(title)}, ${isAsync ? "async " : ""}() => {`,
+    ...indentLines(body, 2),
+    timeoutMs ? `}, ${timeoutMs});` : "});",
+  ];
 }
 
 function expectLiteral(literal: string): string {
@@ -2165,7 +2689,9 @@ function buildDepSetup(deps: Deps, env: Env, needs: Needs): DepSetup {
   }
 
   if (deps.timers || deps.date) {
-    piece.before.push(`${vi}.useFakeTimers();`);
+    piece.before.push(
+      d.name === "vitest" ? "vi.useFakeTimers({ shouldAdvanceTime: true });" : "jest.useFakeTimers({ advanceTimers: true });",
+    );
     if (deps.date) piece.before.push(`${vi}.setSystemTime(new Date("2024-01-01T00:00:00.000Z"));`);
     piece.after.push(`${vi}.useRealTimers();`);
     mocks.push(deps.date ? "fake timers and system time" : "fake timers");
@@ -2606,6 +3132,75 @@ function buildFunctionScenarios(unit: Unit, an: Analysis, env: Env, needs: Needs
     }
   }
 
+  /* ---- 6. every variant of every parameter type (coverage exercise) ---- */
+  {
+    const combos = argumentCombinations(params, sc);
+
+    if (combos.length > 1) {
+      needs.helpers.add(attemptHelpers(env.file.isTs));
+
+      add({
+        title: `runs ${combos.length} argument combinations`,
+        category: "edge",
+        level: "exercise",
+        reason:
+          "Runs the code with every union member, both booleans, zero and empty values and missing optional arguments so that every branch executes. It only checks that nothing crashes; add assertions for the results you care about.",
+        line: startLineOf(unit.fn),
+        lines: [
+          ...prelude,
+          "const calls = [",
+          ...combos.map((combo) => `  () => ${target}(${combo}),`),
+          "];",
+          "for (const call of calls) {",
+          `  const outcome = ${an.isAsync ? "await attemptAsync(call)" : "attempt(call)"};`,
+          "  expect(outcome.error === undefined || outcome.error instanceof Error).toBe(true);",
+          "}",
+        ],
+      });
+    }
+  }
+
+  /* ---- 7. a method used after the class's other methods (object in a used state) ---- */
+  if (unit.kind === "method" && !unit.isStatic && unit.classNode) {
+    const siblings = unit.classNode.members
+      .filter(
+        (member): member is ts.MethodDeclaration =>
+          ts.isMethodDeclaration(member) &&
+          !!member.body &&
+          ts.isIdentifier(member.name) &&
+          member.name.text !== unit.methodName &&
+          !hasModifier(member, ts.SyntaxKind.PrivateKeyword) &&
+          !hasModifier(member, ts.SyntaxKind.ProtectedKeyword) &&
+          !hasModifier(member, ts.SyntaxKind.StaticKeyword),
+      )
+      .slice(0, 6);
+
+    if (siblings.length > 0) {
+      needs.helpers.add(attemptHelpers(env.file.isTs));
+
+      const setup = siblings.map((sibling) => {
+        const siblingAsync = !!sibling.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword);
+        const call = `instance.${(sibling.name as ts.Identifier).text}(${callArguments(planParams(sibling, sc), newPlan(), sc)})`;
+        return siblingAsync ? `await attemptAsync(() => ${call});` : `attempt(() => ${call});`;
+      });
+
+      add({
+        title: `works after the other methods of ${unit.callName} have been used`,
+        category: "state",
+        level: "exercise",
+        reason:
+          "Calls the class's other methods first so this method runs against an object that holds data, which exercises the code that only runs on a non-empty instance.",
+        line: startLineOf(unit.fn),
+        lines: [
+          ...prelude,
+          ...setup,
+          `const outcome = ${an.isAsync ? "await attemptAsync" : "attempt"}(() => ${target}(${callArguments(params, newPlan(), sc)}));`,
+          "expect(outcome.error === undefined || outcome.error instanceof Error).toBe(true);",
+        ],
+      });
+    }
+  }
+
   const caveats = [...dep.caveats];
   if (scenarios.some((scenario) => scenario.category === "edge")) {
     caveats.push('Edge-case tests only check that nothing throws. If one fails, either the code needs a guard or the test should expect the error.');
@@ -2805,7 +3400,12 @@ function buildComponentScenarios(unit: Unit, an: Analysis, env: Env, needs: Need
       assertion: input.level,
       reason: input.reason,
       line: input.line,
-      lines: itBlock(title, input.lines.some((line) => line.includes("await ")), input.lines),
+      lines: itBlock(
+        title,
+        input.lines.some((line) => line.includes("await ")),
+        input.lines,
+        input.lines.some((line) => line.includes("exerciseControls")) ? 30_000 : undefined,
+      ),
     });
   };
 
@@ -3088,6 +3688,241 @@ function buildComponentScenarios(unit: Unit, an: Analysis, env: Env, needs: Need
     });
   }
 
+  /* ---- coverage exercises: prop variants, data-driven flows and every control ---- */
+  {
+    const isTs = env.file.isTs;
+    const fileText = env.file.text;
+    literalHints = collectLiteralHints(fileText);
+    needs.helpers.add(flushHelper(isTs));
+    needs.helpers.add(exerciseHelper(isTs));
+
+    const restore = `${vi}.restoreAllMocks();`;
+    const needsRestore = () => {
+      if (!dep.piece.after.includes(restore)) dep.piece.after.push(restore);
+    };
+
+    if (/ResizeObserver|IntersectionObserver|matchMedia|scrollIntoView|scrollTo|@xyflow|reactflow|mermaid|recharts/.test(fileText)) {
+      needs.helpers.add(browserStubsHelper(isTs));
+      dep.piece.before.push("installBrowserStubs();");
+    }
+
+    const clipboardLine = (rejects: boolean) =>
+      `Object.defineProperty(navigator, "clipboard", { value: { writeText: ${vi}.fn().${
+        rejects ? 'mockRejectedValue(new Error("denied"))' : "mockResolvedValue(undefined)"
+      } }, configurable: true });`;
+
+    const usesClipboard = /clipboard/.test(fileText);
+    if (usesClipboard) dep.piece.before.push(clipboardLine(false));
+
+    if (/\balert\(/.test(fileText)) {
+      dep.piece.before.push(`${vi}.spyOn(window, "alert").mockImplementation(() => {});`);
+      needsRestore();
+    }
+    if (/\bconfirm\(/.test(fileText)) {
+      dep.piece.before.push(`${vi}.spyOn(window, "confirm").mockReturnValue(true);`);
+      needsRestore();
+    }
+
+    const element = (attributes: string[]): string => {
+      const tag = `<${unit.callName}${attributes.length ? ` ${attributes.join(" ")}` : ""} />`;
+      return routerPackage ? `<MemoryRouter>${tag}</MemoryRouter>` : tag;
+    };
+
+    const baseAttributes = hasProps ? ["{...props}"] : [];
+    const cast = (value: string) => (isTs ? `(${value} as any)` : value);
+    const isHandlerProp = (prop: PropFact) => /^on[A-Z]/.test(prop.name) || valueKindOf(prop.typeNode, prop.name) === "function";
+
+    /* -- props: required only, everything provided, and every variant -- */
+    const requiredEntries = [...propsMap.values()]
+      .filter((prop) => !prop.optional && !isHandlerProp(prop))
+      .map((prop) => `${objectKey(prop.name)}: ${sampleFromType(prop.typeNode, prop.name, typedCtx)}`);
+
+    if (propsMap.size > 0 && requiredEntries.length !== baseProps.length) {
+      top.push(`const requiredProps = { ${requiredEntries.join(", ")} };`, "");
+
+      add({
+        title: "renders with only the required props",
+        category: "render",
+        level: "exercise",
+        reason: "Optional props and callbacks are left out, which runs the code that handles their absence.",
+        line: startLineOf(unit.fn),
+        lines: [`render(${element(requiredEntries.length ? ["{...requiredProps}"] : [])});`, "expect(document.body.firstChild).not.toBeNull();"],
+      });
+    }
+
+    const variantLists: Array<{ name: string; variants: string[] }> = [];
+
+    for (const prop of propsMap.values()) {
+      const handler = isHandlerProp(prop);
+      const count = Math.min(6, Math.max(1, variantCount(prop.typeNode, typedCtx)));
+      const variants = handler
+        ? [`${vi}.fn()`]
+        : Array.from({ length: count }, (_, index) => richSample(prop.typeNode, prop.name, typedCtx, index, "rich"));
+
+      if (prop.optional) variants.push("undefined");
+
+      const unique = [...new Set(variants)];
+      if (unique.length > 1) variantLists.push({ name: prop.name, variants: unique });
+    }
+
+    const roundCount = Math.min(8, Math.max(1, ...variantLists.map((entry) => entry.variants.length)));
+
+    const roundsFor = (offset: number) =>
+      Array.from(
+        { length: roundCount },
+        (_, round) =>
+          `{ ${variantLists
+            .map((entry) => `${objectKey(entry.name)}: ${entry.variants[(round + offset) % entry.variants.length]}`)
+            .join(", ")} }`,
+      );
+
+    const hasRequests = an.deps.fetch || an.deps.axiosVerbs.length > 0;
+
+    if (variantLists.length > 0) {
+      [0, 1].forEach((offset) => {
+        add({
+          title: offset === 0 ? "renders with every variant of its props" : "renders with the prop variants paired differently",
+          category: "render",
+          level: "exercise",
+          reason:
+            "Cycles every prop through its possible values (each union member, true and false, empty and filled, provided and missing) so the code that depends on them runs.",
+          line: startLineOf(unit.fn),
+          lines: [
+            "const rounds = [",
+            ...roundsFor(offset).map((round) => `  ${round},`),
+            "];",
+            "for (const overrides of rounds) {",
+            `  const { unmount } = render(${element([...baseAttributes, `{...${cast("overrides")}}`])});`,
+            ...(offset === 0 && !hasRequests ? ["  await exerciseControls();"] : []),
+            "  expect(document.body.firstChild).not.toBeNull();",
+            "  unmount();",
+            "}",
+          ],
+        });
+      });
+    }
+
+    /* -- data-driven flows: stub the request, then exercise every control -- */
+    const respondWith = (body: string, ok = true): string[] =>
+      an.deps.fetch
+        ? [fetchStubLineWith(env, "mockResolvedValue", `{ ok: ${ok}, status: ${ok ? 200 : 500}, json: async () => (${body}), text: async () => "" }`)]
+        : an.deps.axiosVerbs.map((verb) => `${vi}.mocked(axios.${verb}).mockResolvedValue({ data: ${body} }${isTs ? " as any" : ""});`);
+
+    const failWith = (error: string): string[] =>
+      an.deps.fetch
+        ? [fetchStubLineWith(env, "mockRejectedValue", error)]
+        : an.deps.axiosVerbs.map((verb) => `${vi}.mocked(axios.${verb}).mockRejectedValue(${error});`);
+
+    const timersLine = an.deps.timers || an.deps.date ? [`act(() => { ${vi}.runOnlyPendingTimers(); });`] : [];
+
+    const exercise = (title: string, reason: string, setup: string[], attributes: string[] = baseAttributes) =>
+      add({
+        title,
+        category: hasRequests ? "state" : "interaction",
+        level: "exercise",
+        reason,
+        line: startLineOf(unit.fn),
+        lines: [
+          ...setup,
+          `render(${element(attributes)});`,
+          "await exerciseControls();",
+          ...timersLine,
+          "expect(document.body.firstChild).not.toBeNull();",
+        ],
+      });
+
+    if (hasRequests) {
+      const responseType = inferResponseType(unit.fn);
+
+      if (responseType) {
+        const fixtures = buildFixtures(responseType, typedCtx);
+
+        exercise(
+          "loads a full result and exercises every control",
+          "The request returns data built from the response type, with every union member, optional field and list item, then every button, select and field is used.",
+          respondWith(fixtures.rich0),
+        );
+        exercise(
+          "loads an alternate result and exercises every control",
+          "The same data with different booleans, zero values and missing optional fields.",
+          respondWith(fixtures.rich1),
+        );
+        exercise(
+          "loads an empty result and exercises every control",
+          "The request returns empty lists and zero counts.",
+          respondWith(fixtures.empty),
+        );
+
+        if (fixtures.long) {
+          exercise(
+            "loads a long list and exercises every control",
+            "Lists with many items, which runs code that only appears past a size threshold (such as \"show all\").",
+            respondWith(fixtures.long),
+          );
+        }
+
+        if (usesClipboard) {
+          exercise(
+            "exercises every control when the clipboard is blocked",
+            "Copy buttons fail because the clipboard rejects the write.",
+            [...respondWith(fixtures.rich0), clipboardLine(true)],
+          );
+        }
+      } else {
+        caveats.push(
+          "The response type could not be inferred (no `data as Type` after .json()), so only failure paths were generated. Add a fixture for a successful response.",
+        );
+      }
+
+      exercise(
+        "exercises every control when the server returns an error",
+        "The request answers with a failed status and an error message.",
+        respondWith('{ success: false, error: "boom" }', false),
+      );
+      exercise(
+        "exercises every control when the server gives no error message",
+        "The request fails with an empty body, which runs the fallback message.",
+        respondWith("{}", false),
+      );
+      exercise(
+        "exercises every control when the response is marked unsuccessful",
+        "The status is OK but the body says success is false.",
+        respondWith('{ success: false, error: "bad input" }'),
+      );
+      exercise(
+        "exercises every control when the request throws an Error",
+        "The network call rejects with an Error object.",
+        failWith('new Error("network down")'),
+      );
+      exercise(
+        "exercises every control when the request rejects with a non-Error value",
+        "The network call rejects with a plain string.",
+        failWith('"nope"'),
+      );
+
+      const emptyCandidates = [...propsMap.values()]
+        .filter((prop) => !prop.optional && valueKindOf(prop.typeNode, prop.name) === "string")
+        .slice(0, 2);
+
+      for (const prop of emptyCandidates) {
+        exercise(
+          `exercises every control with an empty ${prop.name}`,
+          `Runs the validation that guards against an empty ${prop.name}.`,
+          failWith('new Error("network down")'),
+          [...baseAttributes, `${prop.name}=""`],
+        );
+      }
+    } else {
+      exercise(
+        "exercises every control",
+        "Every button is clicked, every select option is chosen and every field is edited, several times, so each handler runs.",
+        [],
+      );
+    }
+
+    literalHints = new Map();
+  }
+
   if (an.deps.hookCalls.some((name) => !["useState", "useEffect", "useMemo", "useCallback", "useRef", "useContext", "useReducer", "useId"].includes(name) && !an.deps.routerNames.includes(name) && !an.deps.providerHooks.includes(name))) {
     caveats.push("It calls custom hooks. If they need providers or network access, wrap or mock them.");
   }
@@ -3281,6 +4116,59 @@ function buildHookScenarios(unit: Unit, an: Analysis, env: Env, needs: Needs): B
       line: startLineOf(unit.fn),
       lines: [rendered, `await waitFor(() => expect(${called}).toHaveBeenCalled());`],
     });
+  }
+
+  /* ---- coverage exercises ---- */
+  {
+    needs.helpers.add(attemptHelpers(env.file.isTs));
+    const combos = argumentCombinations(params, sc);
+
+    if (combos.length > 1) {
+      add({
+        title: `renders with ${combos.length} argument combinations`,
+        category: "edge",
+        level: "exercise",
+        reason:
+          "Renders the hook with every union member, both booleans, zero and empty values and missing optional arguments so every branch executes. It only checks that nothing crashes.",
+        line: startLineOf(unit.fn),
+        lines: [
+          "const hooks = [",
+          ...combos.map((combo) => `  () => ${unit.callName}(${combo}),`),
+          "];",
+          "for (const useHook of hooks) {",
+          "  const outcome = attempt(() => {",
+          "    const { unmount } = renderHook(useHook);",
+          "    unmount();",
+          "  });",
+          "  expect(outcome.error === undefined || outcome.error instanceof Error).toBe(true);",
+          "}",
+        ],
+      });
+    }
+
+    const callable = objectKeys.filter((key) => localFunctions.has(key) || actionPattern.test(key)).slice(0, 8);
+
+    if (callable.length > 0) {
+      const calls = callable.map((key) => {
+        const fn = localFunctions.get(key);
+        const actionArgs = callArguments(fn ? planParams(fn, sc) : [], newPlan(), sc);
+        const access = /^[A-Za-z_$][\w$]*$/.test(key) ? `result.current.${key}` : `result.current[${quote(key)}]`;
+        const isAsyncAction = !!fn?.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword);
+
+        return isAsyncAction
+          ? [`await act(async () => {`, `  await attemptAsync(() => ${access}(${actionArgs}));`, "});"]
+          : ["act(() => {", `  attempt(() => ${access}(${actionArgs}));`, "});"];
+      });
+
+      add({
+        title: `calls every returned function (${callable.join(", ")})`,
+        category: "state",
+        level: "exercise",
+        reason: "Calls each function the hook returns, twice, so the state updates and their branches run.",
+        line: startLineOf(unit.fn),
+        lines: [rendered, ...calls.flat(), ...calls.flat(), "expect(result.current).toBeDefined();"],
+      });
+    }
   }
 
   if (an.deps.providerHooks.length > 0) {
@@ -3532,13 +4420,15 @@ function mergeNeeds(target: Needs, source: Needs): void {
   if (source.defaultName) target.defaultName = source.defaultName;
   source.extraImports.forEach((line) => target.extraImports.add(line));
   source.moduleMocks.forEach((line) => target.moduleMocks.add(line));
+  source.helpers.forEach((helper) => target.helpers.add(helper));
   target.jsdom ||= source.jsdom;
   target.router ??= source.router;
 }
 
 function renderHeader(needs: Needs, body: string, env: Env, subjectPath: string): string {
   const lines: string[] = [];
-  const used = (pattern: RegExp) => pattern.test(body);
+  const helpersText = [...needs.helpers].join("\n");
+  const used = (pattern: RegExp) => pattern.test(body) || pattern.test(helpersText);
 
   if (needs.jsdom) {
     lines.push(env.d.name === "vitest" ? "// @vitest-environment jsdom" : "/** @jest-environment jsdom */");
@@ -3587,6 +4477,11 @@ function renderHeader(needs: Needs, body: string, env: Env, subjectPath: string)
   if (needs.moduleMocks.size > 0) {
     lines.push("");
     for (const mock of needs.moduleMocks) lines.push(mock);
+  }
+
+  if (needs.helpers.size > 0) {
+    lines.push("");
+    lines.push([...needs.helpers].join("\n\n"));
   }
 
   return lines.join("\n");
@@ -3863,8 +4758,14 @@ export async function generateTests(
 
       const exact = result.scenarios.filter((scenario) => scenario.assertion === "exact").length;
       const review = result.scenarios.filter((scenario) => scenario.assertion === "scaffold").length;
+      const exercised = result.scenarios.filter((scenario) => scenario.assertion === "exercise").length;
 
       const caveats = [...new Set(result.caveats)];
+      if (exercised > 0) {
+        caveats.push(
+          `${exercised} test${exercised === 1 ? " runs" : "s run"} the code with many inputs to raise coverage but only check that nothing crashes. Add assertions for the results that matter.`,
+        );
+      }
       if (review > 0) {
         caveats.push(`${review} test${review === 1 ? " has" : "s have"} a TODO assertion. Replace it with the value you expect.`);
       }
@@ -3905,6 +4806,7 @@ export async function generateTests(
         `This ${KIND_WORD[unit.kind]} has complexity ${analysis.complexity} with ${branches} branch${branches === 1 ? "" : "es"}` +
         `${analysis.throwsCount ? ` and ${analysis.throwsCount} throw${analysis.throwsCount === 1 ? "" : "s"}` : ""}. ` +
         `${needed} test${needed === 1 ? " was" : "s were"} generated: ${exact} assert${exact === 1 ? "s" : ""} a value taken from the code, ` +
+        `${exercised} run${exercised === 1 ? "s" : ""} the code with many input variants to execute every branch, ` +
         `${review} need${review === 1 ? "s" : ""} your expected value, and the rest check types or that nothing throws.`;
 
       const target: TestTarget = {
