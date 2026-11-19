@@ -32,6 +32,7 @@ import { analyzeGitChanges } from "./tools/analyzeGitChanges.js";
 import { analyzeUpgradeImpact } from "./tools/analyzeUpgradeImpact.js";
 import { reviewPullRequest } from "./tools/reviewPullRequest.js";
 import { buildCodebaseContext } from "./tools/buildCodebaseContext.js";
+import { analyzeCommitImpact } from "./tools/analyzeCommitImpact.js";
 
 const app = express();
 const PORT = 4174;
@@ -2420,6 +2421,92 @@ app.post("/api/analyze-react-components", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to analyze React components.",
+    });
+  }
+});
+
+app.post("/api/analyze-commit-impact", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      mode = "commit",
+      commit,
+      base,
+      head,
+      maxDepth = 5,
+    } = req.body ?? {};
+ 
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+ 
+    if (
+      mode !== "commit" &&
+      mode !== "range" &&
+      mode !== "staged" &&
+      mode !== "working"
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "mode must be commit, range, staged, or working.",
+      });
+    }
+ 
+    for (const [label, value] of [
+      ["commit", commit],
+      ["base", base],
+      ["head", head],
+    ] as const) {
+      if (
+        value !== undefined &&
+        (typeof value !== "string" || value.length > 200)
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: `${label} must be a string of at most 200 characters.`,
+        });
+      }
+    }
+ 
+    if (!Number.isInteger(maxDepth) || maxDepth < 1 || maxDepth > 8) {
+      return res.status(400).json({
+        success: false,
+        error: "maxDepth must be an integer between 1 and 8.",
+      });
+    }
+ 
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+ 
+    const report = await analyzeCommitImpact(projectPath, {
+      mode,
+      commit: typeof commit === "string" && commit.trim() ? commit.trim() : undefined,
+      base: typeof base === "string" && base.trim() ? base.trim() : undefined,
+      head: typeof head === "string" && head.trim() ? head.trim() : undefined,
+      maxDepth,
+    });
+ 
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "analyze_commit_impact",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze commit impact.",
     });
   }
 });

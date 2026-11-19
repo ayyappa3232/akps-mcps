@@ -37,6 +37,7 @@ import AnalyzeGitChanges from "./modules/gitChanges/AnalyzeGitChanges";
 import AnalyzeUpgradeImpact from "./modules/upgradeImpact/AnalyzeUpgradeImpact";
 import ReviewPullRequest from "./modules/prReview/ReviewPullRequest";
 import BuildCodebaseContext from "./modules/codebaseContext/BuildCodebaseContext";
+import AnalyzeCommitImpact from "./modules/commitImpact/AnalyzeCommitImpact";
 
 const defaultProjectPath =
   "/Users/ayyappakumar/Desktop/Ayyappa/Projects/React/My_Projects/PORTFOLIO_PROJECTS/learning-coding-hub";
@@ -218,7 +219,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact" | "secretDetector" | "testGenerator" | "gitChanges" | "upgradeImpact" | "prReview" | "codebaseContext";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact" | "secretDetector" | "testGenerator" | "gitChanges" | "upgradeImpact" | "prReview" | "codebaseContext" | "commitImpact";
   label: string;
   icon: string;
 };
@@ -246,6 +247,7 @@ const developerTools: DeveloperTool[] = [
   { value: "gitChanges", label: "Git Changes", icon: "⎇" },
   { value: "upgradeImpact", label: "Upgrade Impact", icon: "⇧" },
   { value: "prReview", label: "PR Review", icon: "⚖" },
+  { value: "commitImpact", label: "Commit Impact", icon: "⎇" },
   { value: "codebaseContext", label: "Codebase Context", icon: "◈" }
 ];
 
@@ -526,7 +528,8 @@ export default function App() {
       "gitChanges" |
       "upgradeImpact" |
       "prReview" | 
-      "codebaseContext"
+      "codebaseContext" |
+      "commitImpact"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -941,7 +944,8 @@ export default function App() {
                 activeView === "gitChanges" ||
                 activeView === "upgradeImpact" ||
                 activeView === "prReview" ||
-                activeView === "codebaseContext"
+                activeView === "codebaseContext" || 
+                activeView === "commitImpact"
                 ? activeView
                 : null
             }
@@ -1377,6 +1381,13 @@ export default function App() {
 
          {activeView === "codebaseContext" && (
           <BuildCodebaseContext
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "commitImpact" && (
+          <AnalyzeCommitImpact
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />

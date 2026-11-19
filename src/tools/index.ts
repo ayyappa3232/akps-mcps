@@ -26,6 +26,7 @@ import { registerAnalyzeGitChangesTool } from "./analyzeGitChanges.js";
 import { registerAnalyzeUpgradeImpactTool } from "./analyzeUpgradeImpact.js";
 import { registerReviewPullRequestTool } from "./reviewPullRequest.js";
 import { registerBuildCodebaseContextTool } from "./buildCodebaseContext.js";
+import { registerAnalyzeCommitImpactTool } from "./analyzeCommitImpact.js";
 
 export function registerAllTools(server: McpServer): void {
   registerHelloDeveloperTool(server);
@@ -54,4 +55,5 @@ export function registerAllTools(server: McpServer): void {
   registerAnalyzeUpgradeImpactTool(server);
   registerReviewPullRequestTool(server);
   registerBuildCodebaseContextTool(server);
+  registerAnalyzeCommitImpactTool(server);
 }
