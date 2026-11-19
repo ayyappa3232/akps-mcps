@@ -25,6 +25,7 @@ import { registerGenerateTestsTool } from "./generateTests.js";
 import { registerAnalyzeGitChangesTool } from "./analyzeGitChanges.js";
 import { registerAnalyzeUpgradeImpactTool } from "./analyzeUpgradeImpact.js";
 import { registerReviewPullRequestTool } from "./reviewPullRequest.js";
+import { registerBuildCodebaseContextTool } from "./buildCodebaseContext.js";
 
 export function registerAllTools(server: McpServer): void {
   registerHelloDeveloperTool(server);
@@ -52,4 +53,5 @@ export function registerAllTools(server: McpServer): void {
   registerAnalyzeGitChangesTool(server);
   registerAnalyzeUpgradeImpactTool(server);
   registerReviewPullRequestTool(server);
+  registerBuildCodebaseContextTool(server);
 }

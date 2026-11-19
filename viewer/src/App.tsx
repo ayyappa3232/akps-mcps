@@ -36,6 +36,7 @@ import GenerateTests from "./modules/testGenerator/GenerateTests";
 import AnalyzeGitChanges from "./modules/gitChanges/AnalyzeGitChanges";
 import AnalyzeUpgradeImpact from "./modules/upgradeImpact/AnalyzeUpgradeImpact";
 import ReviewPullRequest from "./modules/prReview/ReviewPullRequest";
+import BuildCodebaseContext from "./modules/codebaseContext/BuildCodebaseContext";
 
 const defaultProjectPath =
   "/Users/ayyappakumar/Desktop/Ayyappa/Projects/React/My_Projects/PORTFOLIO_PROJECTS/learning-coding-hub";
@@ -217,7 +218,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact" | "secretDetector" | "testGenerator" | "gitChanges" | "upgradeImpact" | "prReview";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact" | "secretDetector" | "testGenerator" | "gitChanges" | "upgradeImpact" | "prReview" | "codebaseContext";
   label: string;
   icon: string;
 };
@@ -244,7 +245,8 @@ const developerTools: DeveloperTool[] = [
   { value: "testGenerator", label: "Test Generator", icon: "📝" },
   { value: "gitChanges", label: "Git Changes", icon: "⎇" },
   { value: "upgradeImpact", label: "Upgrade Impact", icon: "⇧" },
-  { value: "prReview", label: "PR Review", icon: "⚖" }
+  { value: "prReview", label: "PR Review", icon: "⚖" },
+  { value: "codebaseContext", label: "Codebase Context", icon: "◈" }
 ];
 
 function DeveloperToolsSelect({
@@ -523,7 +525,8 @@ export default function App() {
       "testGenerator" |
       "gitChanges" |
       "upgradeImpact" |
-      "prReview"
+      "prReview" | 
+      "codebaseContext"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -937,7 +940,8 @@ export default function App() {
                 activeView === "testGenerator" ||
                 activeView === "gitChanges" ||
                 activeView === "upgradeImpact" ||
-                activeView === "prReview"
+                activeView === "prReview" ||
+                activeView === "codebaseContext"
                 ? activeView
                 : null
             }
@@ -1366,6 +1370,13 @@ export default function App() {
 
         {activeView === "prReview" && (
           <ReviewPullRequest
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+         {activeView === "codebaseContext" && (
+          <BuildCodebaseContext
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />

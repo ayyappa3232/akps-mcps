@@ -31,6 +31,7 @@ import { generateTests } from "./tools/generateTests.js";
 import { analyzeGitChanges } from "./tools/analyzeGitChanges.js";
 import { analyzeUpgradeImpact } from "./tools/analyzeUpgradeImpact.js";
 import { reviewPullRequest } from "./tools/reviewPullRequest.js";
+import { buildCodebaseContext } from "./tools/buildCodebaseContext.js";
 
 const app = express();
 const PORT = 4174;
@@ -2207,6 +2208,218 @@ app.post("/api/review-pull-request", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to review the pull request.",
+    });
+  }
+});
+
+app.post("/api/build-codebase-context", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      task,
+      focusFiles,
+      tokenBudget = 8000,
+      detail = "auto",
+      includeTests = false,
+      includeGit = true,
+    } = req.body ?? {};
+ 
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+ 
+    if (task !== undefined && task !== null && typeof task !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "task must be a string when provided.",
+      });
+    }
+ 
+    if (typeof task === "string" && task.length > 2000) {
+      return res.status(400).json({
+        success: false,
+        error: "task must be at most 2000 characters.",
+      });
+    }
+ 
+    if (
+      focusFiles !== undefined &&
+      (!Array.isArray(focusFiles) ||
+        focusFiles.length > 20 ||
+        focusFiles.some(
+          (file: unknown) =>
+            typeof file !== "string" ||
+            !file.trim() ||
+            path.isAbsolute(file) ||
+            file.split(/[\\/]/).includes(".."),
+        ))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "focusFiles must be an array of up to 20 relative paths.",
+      });
+    }
+ 
+    if (!Number.isInteger(tokenBudget) || tokenBudget < 1000 || tokenBudget > 100000) {
+      return res.status(400).json({
+        success: false,
+        error: "tokenBudget must be a whole number from 1000 to 100000.",
+      });
+    }
+ 
+    if (!["auto", "outline"].includes(detail)) {
+      return res.status(400).json({
+        success: false,
+        error: "detail must be auto or outline.",
+      });
+    }
+ 
+    if (typeof includeTests !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeTests must be a boolean.",
+      });
+    }
+ 
+    if (typeof includeGit !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeGit must be a boolean.",
+      });
+    }
+ 
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+ 
+    const report = await buildCodebaseContext(projectPath, {
+      task: typeof task === "string" && task.trim() ? task.trim() : undefined,
+      focusFiles: focusFiles?.map((file: string) => file.trim()),
+      tokenBudget,
+      detail,
+      includeTests,
+      includeGit,
+    });
+ 
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "build_codebase_context",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to build the codebase context.",
+    });
+  }
+});
+ 
+app.post("/api/analyze-react-components", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      filePath,
+      maxLines = 150,
+      maxProps = 7,
+      includeTests = false,
+    } = req.body ?? {};
+ 
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+ 
+    if (filePath !== undefined && typeof filePath !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be a string when provided.",
+      });
+    }
+ 
+    if (
+      typeof maxLines !== "number" ||
+      !Number.isInteger(maxLines) ||
+      maxLines < 30 ||
+      maxLines > 2000
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "maxLines must be an integer between 30 and 2000.",
+      });
+    }
+ 
+    if (
+      typeof maxProps !== "number" ||
+      !Number.isInteger(maxProps) ||
+      maxProps < 1 ||
+      maxProps > 50
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "maxProps must be an integer between 1 and 50.",
+      });
+    }
+ 
+    if (typeof includeTests !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeTests must be a boolean.",
+      });
+    }
+ 
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+ 
+    if (
+      typeof filePath === "string" &&
+      (path.isAbsolute(filePath) ||
+        filePath.split(/[\\/]/).includes(".."))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "filePath must be relative to projectPath.",
+      });
+    }
+ 
+    const report = await analyzeReactComponents(
+      projectPath,
+      typeof filePath === "string" && filePath.trim()
+        ? filePath.trim()
+        : undefined,
+      { maxLines, maxProps, includeTests },
+    );
+ 
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "analyze_react_components",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze React components.",
     });
   }
 });
