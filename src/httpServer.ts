@@ -33,6 +33,7 @@ import { analyzeUpgradeImpact } from "./tools/analyzeUpgradeImpact.js";
 import { reviewPullRequest } from "./tools/reviewPullRequest.js";
 import { buildCodebaseContext } from "./tools/buildCodebaseContext.js";
 import { analyzeCommitImpact } from "./tools/analyzeCommitImpact.js";
+import { exploreArchitecture } from "./tools/exploreArchitecture.js";
 
 const app = express();
 const PORT = 4174;
@@ -2507,6 +2508,126 @@ app.post("/api/analyze-commit-impact", async (req, res) => {
         error instanceof Error
           ? error.message
           : "Failed to analyze commit impact.",
+    });
+  }
+});
+
+app.post("/api/explore-architecture", async (req, res) => {
+  try {
+    let {
+      projectPath,
+      moduleDepth,
+      includeTests = false,
+      forbid,
+      focusModule,
+    } = req.body ?? {};
+ 
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "projectPath must be a non-empty string.",
+      });
+    }
+ 
+    if (moduleDepth === null || moduleDepth === "") moduleDepth = undefined;
+ 
+    if (
+      moduleDepth !== undefined &&
+      (!Number.isInteger(moduleDepth) || moduleDepth < 1 || moduleDepth > 4)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "moduleDepth must be a whole number from 1 to 4.",
+      });
+    }
+ 
+    if (typeof includeTests !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "includeTests must be a boolean.",
+      });
+    }
+ 
+    if (forbid !== undefined) {
+      if (
+        !Array.isArray(forbid) ||
+        forbid.length > 20 ||
+        forbid.some(
+          (rule: unknown) =>
+            typeof rule !== "string" ||
+            rule.length > 200 ||
+            !/^.+?\s*(->|→|=>)\s*.+$/.test(rule.trim()),
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'forbid must be an array of up to 20 rules written like "src/ui -> src/db".',
+        });
+      }
+ 
+      if (
+        forbid.some((rule: string) =>
+          rule
+            .split(/->|→|=>/)
+            .some(
+              (side) =>
+                path.isAbsolute(side.trim()) ||
+                side.trim().split(/[\\/]/).includes(".."),
+            ),
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Rules must use relative folders inside the project.",
+        });
+      }
+    }
+ 
+    if (focusModule !== undefined && focusModule !== null && focusModule !== "") {
+      if (
+        typeof focusModule !== "string" ||
+        focusModule.length > 300 ||
+        focusModule.split(/[\\/]/).includes("..")
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "focusModule must be a module name such as src/server/auth.",
+        });
+      }
+    }
+ 
+    try {
+      projectPath = (await resolveProjectPath(projectPath)).projectPath;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid project path or repository URL.",
+      });
+    }
+ 
+    const report = await exploreArchitecture(projectPath, {
+      moduleDepth,
+      includeTests,
+      forbid: forbid?.map((rule: string) => rule.trim()),
+      focusModule:
+        typeof focusModule === "string" && focusModule.trim()
+          ? focusModule.trim()
+          : undefined,
+    });
+ 
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      tool: "explore_architecture",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to explore the architecture.",
     });
   }
 });

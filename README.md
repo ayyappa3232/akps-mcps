@@ -1801,8 +1801,8 @@ Use this section as the project checklist. Update the status from `[ ]` to `[x]`
 #### Phase 8 — AI Developer Intelligence
 
 - [x] Codebase Context MCP - `buildCodebaseContext.ts`
-- [ ] Architecture Explorer
-- [ ] Refactoring Assistant
+- [x] Architecture Explorer - `exploreArchitecture.ts`
+- [ ] Refactoring Assistant - Inprogress
 
 **Phase 8: 0/3 complete**
 

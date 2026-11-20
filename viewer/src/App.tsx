@@ -38,6 +38,7 @@ import AnalyzeUpgradeImpact from "./modules/upgradeImpact/AnalyzeUpgradeImpact";
 import ReviewPullRequest from "./modules/prReview/ReviewPullRequest";
 import BuildCodebaseContext from "./modules/codebaseContext/BuildCodebaseContext";
 import AnalyzeCommitImpact from "./modules/commitImpact/AnalyzeCommitImpact";
+import ExploreArchitecture from "./modules/exploreArchitecture/ExploreArchitecture";
 
 const defaultProjectPath =
   "/Users/ayyappakumar/Desktop/Ayyappa/Projects/React/My_Projects/PORTFOLIO_PROJECTS/learning-coding-hub";
@@ -219,7 +220,7 @@ function createProgressiveFlowLayout(
 }
 
 type DeveloperTool = {
-  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact" | "secretDetector" | "testGenerator" | "gitChanges" | "upgradeImpact" | "prReview" | "codebaseContext" | "commitImpact";
+  value: "method" | "impact" | "quality" | "deadCode" | "apiExplorer" | "security" | "testCoverage" | "dependencyHealth" | "circularDependencies" | "duplicateCode" | "reactComponents" | "reactRerenders" | "hookDependencies" | "breakingApiChanges" | "apiContracts" | "stateFlow" | "testImpact" | "secretDetector" | "testGenerator" | "gitChanges" | "upgradeImpact" | "prReview" | "codebaseContext" | "commitImpact" | "exploreArchitecture";
   label: string;
   icon: string;
 };
@@ -248,7 +249,8 @@ const developerTools: DeveloperTool[] = [
   { value: "upgradeImpact", label: "Upgrade Impact", icon: "⇧" },
   { value: "prReview", label: "PR Review", icon: "⚖" },
   { value: "commitImpact", label: "Commit Impact", icon: "⎇" },
-  { value: "codebaseContext", label: "Codebase Context", icon: "◈" }
+  { value: "codebaseContext", label: "Codebase Context", icon: "◈" },
+  { value: "exploreArchitecture", label: "Explore Architecture", icon: "🏗" }
 ];
 
 function DeveloperToolsSelect({
@@ -529,7 +531,8 @@ export default function App() {
       "upgradeImpact" |
       "prReview" | 
       "codebaseContext" |
-      "commitImpact"
+      "commitImpact" |
+      "exploreArchitecture"
     >("tree");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [, setExpandedGraphNodes] = useState<Set<string>>(new Set());
@@ -945,7 +948,8 @@ export default function App() {
                 activeView === "upgradeImpact" ||
                 activeView === "prReview" ||
                 activeView === "codebaseContext" || 
-                activeView === "commitImpact"
+                activeView === "commitImpact" ||
+                activeView === "exploreArchitecture"
                 ? activeView
                 : null
             }
@@ -1388,6 +1392,13 @@ export default function App() {
 
         {activeView === "commitImpact" && (
           <AnalyzeCommitImpact
+            projectPath={projectPath}
+            onProjectPathChange={setProjectPath}
+          />
+        )}
+
+        {activeView === "exploreArchitecture" && (
+          <ExploreArchitecture
             projectPath={projectPath}
             onProjectPathChange={setProjectPath}
           />
